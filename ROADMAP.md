@@ -2,9 +2,10 @@
 
 Planned features, in no particular order:
 
-- **Camera and video**: an optional media helper (WebRTC bridge) to receive the
-  entrance station's video and audio, and snapshots; automatic renewal of the
-  monitoring session for live view beyond 60 seconds.
+- **Camera and video**: make the `media` extra (snapshots, live video with
+  automatic session renewal) a supported feature, add audio playback, and
+  follow aiortc releases compatible with the `av` version used by Home
+  Assistant.
 - **Answering calls and two-way audio**: stable support for taking an incoming
   call, sending microphone audio and hanging up.
 - **Doorbell detection**: confirm ring detection on more installations and make

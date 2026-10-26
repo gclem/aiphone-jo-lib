@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import inspect
 import ipaddress
 import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -95,7 +96,7 @@ def credentials(pki: Pki) -> CloudCredentials:
     return CloudCredentials.parse({**credentials_input(pki), "term_name": "Home"})
 
 
-Responder = Callable[[dict[str, Any]], list[dict[str, Any]]]
+Responder = Callable[[dict[str, Any]], list[dict[str, Any]] | Awaitable[list[dict[str, Any]]]]
 
 
 def reply_to(message: dict[str, Any], mid: str, rslt: int = 200, **extra: Any) -> dict[str, Any]:
@@ -166,7 +167,10 @@ class FakeConnection:
     async def publish(self, topic: str, payload: bytes) -> None:
         message = json.loads(payload)
         self.published.append((topic, message))
-        for reply in self.responder(copy.deepcopy(message)):
+        replies = self.responder(copy.deepcopy(message))
+        if inspect.isawaitable(replies):
+            replies = await replies
+        for reply in replies:
             self.inject(reply)
 
     def inject(self, message: dict[str, Any], topic: str = RECV_TOPIC) -> None:
@@ -202,7 +206,9 @@ class FakeBroker:
     def connection(self) -> FakeConnection:
         return self.connections[-1]
 
-    def _respond(self, message: dict[str, Any]) -> list[dict[str, Any]]:
+    def _respond(
+        self, message: dict[str, Any]
+    ) -> list[dict[str, Any]] | Awaitable[list[dict[str, Any]]]:
         # Late binding: tests may swap ``responder`` after connecting.
         return self.responder(message)
 

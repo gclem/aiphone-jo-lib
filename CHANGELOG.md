@@ -6,6 +6,18 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Optional video support, `media` extra (aiortc and Pillow, experimental):
+  `AiphoneJoClient.snapshot()` (JPEG) and `AiphoneJoClient.video_stream()`
+  (`frames()`, `latest_jpeg()`, automatic session renewal), with
+  `MediaUnavailableError` and `MediaTimeoutError`.
+- `AiphoneJoClient.live_monitor()` / `LiveMonitor`: monitoring session renewed
+  automatically, with an `async (offer_sdp) -> answer_sdp` negotiation callback
+  and no media dependency.
+- `AiphoneJoClient(camera_terminal=...)` and `start_camera_session()`: default
+  camera station, or the first non-busy one from `/getRoomInfo`.
+
 ## [0.2.2] - 2026-10-26
 
 ### Added

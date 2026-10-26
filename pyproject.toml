@@ -32,6 +32,12 @@ dependencies = [
     "ifaddr>=0.2",
 ]
 
+[project.optional-dependencies]
+media = [
+    "aiortc>=1.15",
+    "Pillow>=10",
+]
+
 [project.urls]
 Homepage = "https://github.com/gclem/aiphone-jo-lib"
 Issues = "https://github.com/gclem/aiphone-jo-lib/issues"
@@ -41,6 +47,8 @@ aiphone-jo = "aiphone_jo.cli:main"
 
 [dependency-groups]
 dev = [
+    "aiortc>=1.15",
+    "Pillow>=10",
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -70,7 +78,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["SIM117", "PLR0917", "S101", "S105", "S106", "PLC0415", "S311", "SLF001", "ASYNC240", "ASYNC230"]
+"tests/**" = ["ASYNC110", "SIM117", "PLR0917", "S101", "S105", "S106", "PLC0415", "S311", "SLF001", "ASYNC240", "ASYNC230"]
 # The CLI is a short-lived interactive tool: blocking file access is fine there.
 "src/aiphone_jo/cli.py" = ["ASYNC240", "ASYNC230"]
 

@@ -27,7 +27,8 @@ Home Assistant integration.
 | Lock output 2, option output (26121 → 27121) | `open_door(Output.OPTION, …)` | Supported |
 | Monitoring session (30001 → 23021) and clean teardown (30031 + 23003) | `monitor()` | Supported |
 | Station-side end of session (~60 s, 23003 → 30031 + 24003) | automatic | Supported |
-| Video/audio signaling (Janus offer 31011, answer 30012) | `MonitorSession.request_offer()` / `send_answer()` | Supported (signaling only) |
+| Video/audio signaling (Janus offer 31011, answer 30012) | `MonitorSession.request_offer()` / `send_answer()`, `live_monitor()` | Supported |
+| Snapshots and live video (optional `media` extra, aiortc) | `snapshot()`, `video_stream()` | Experimental |
 | Doorbell detection (23001), cancel (23004) | `RingEvent`, `CallUpdatedEvent` | Experimental |
 | Answering a call (24001/30021/24002/23008), declining (603) | `answer_call()` | Experimental |
 | Unregistering a terminal (`/deleteClientInfo`) | `unregister()`, `PairingFlow.cancel()` | Experimental |
@@ -55,7 +56,11 @@ output of the monitor; what it opens depends on how the installation is wired.
   another answers `200`. The library exposes all of them.
 - **A client certificate can only hold one MQTT connection at a time.** Never
   run two clients with the same paired identity.
-- Only the signaling is provided for video; the media requires a WebRTC stack.
+- Video (`media` extra) is experimental. It depends on aiortc, which does
+  not pin `av` in this library; Home Assistant 2026.10 pins `av==19.0.0`, which
+  requires an aiortc release newer than 1.15.0 (aiortc 1.15.0 accepts
+  `av>=14,<18`).
+- Live video is renewed every ~60 s by the station; expect a short gap.
 
 See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the protocol reference and
 [ROADMAP.md](ROADMAP.md) for planned features.
@@ -183,11 +188,51 @@ authorized", client certificate rejected, own topic refused, HTTP 401/403),
 with `auth_failed=True` is emitted) and automatic reconnection stops: pair
 again.
 
-The library only does the **signaling**: the media (ICE/DTLS/SRTP) must be
-handled by a WebRTC stack. Note that the Janus relay is the *offerer*, whereas
-Home Assistant's WebRTC camera API expects the browser to offer, so a bridge
-(for example aiortc or go2rtc) is needed on the Home Assistant side. An
-optional media helper is planned (see [ROADMAP.md](ROADMAP.md)).
+### Video (optional `media` extra)
+
+```bash
+pip install "aiphone-jo[media] @ git+https://github.com/gclem/aiphone-jo-lib@vX.Y.Z"
+```
+
+```python
+client = AiphoneJoClient(credentials, session=session, camera_terminal=station)
+
+jpeg = await client.snapshot()                    # one JPEG, session closed afterwards
+
+async with client.video_stream() as stream:       # live view, renewed every ~60 s
+    async for frame in stream.frames():           # av.VideoFrame objects
+        ...
+    jpeg = stream.latest_jpeg(quality=80)         # most recent frame, or None
+```
+
+- `snapshot(terminal=None, *, timeout=15.0)` opens a monitoring session,
+  negotiates WebRTC with aiortc, decodes the first video frame and always
+  closes the session. While a `video_stream()` is open it returns the stream's
+  latest frame instead.
+- `video_stream(terminal=None)` keeps the view alive: when the station ends the
+  session (after about 60 s) a new one is negotiated automatically, with a gap
+  of a few seconds. While it is open, `open_door()` reuses its session.
+- With `terminal=None`, the client uses `camera_terminal`, or else the first
+  camera station from `/getRoomInfo` that is not busy.
+- Errors: `MediaUnavailableError` (extra not installed), `MediaTimeoutError`,
+  `StationBusyError` (486).
+
+The core never imports aiortc. Another WebRTC stack (for example a bridge to a
+media server) can reuse the same session handling through the low-level
+`live_monitor()` API, which renews the session and calls an
+`async (offer_sdp) -> answer_sdp` callback for every new session:
+
+```python
+async def negotiate(offer_sdp: str) -> str:
+    ...  # apply the relay's offer, return a complete answer (no trickle ICE)
+
+async with client.live_monitor(negotiate, station, on_session_end=cleanup) as live:
+    await live.wait_stopped()
+```
+
+The relay is a Janus gateway (ICE-lite): it sends the offer (H264 video with
+`profile-level-id=42e01f`, `packetization-mode=1`; PCMU audio) and expects a
+complete, receive-only answer.
 
 ### Home Assistant usage
 
@@ -200,8 +245,9 @@ optional media helper is planned (see [ROADMAP.md](ROADMAP.md)).
   `ConnectionStateEvent(auth_failed=True)` and `CredentialsExpiredError` map
   to re-authentication.
 - **Entities**: ring event / binary sensor (`RingEvent`, `CallUpdatedEvent`),
-  one button per lock output (`open_door`), lock status sensor,
-  camera later.
+  one button per lock output (`open_door`), lock status sensor, and a camera
+  using `snapshot()` for still images and `video_stream()` or
+  `live_monitor()` for live view.
 - Use `CloudCredentials.async_create_ssl_context()` (already done by
   `connect()`) to avoid blocking the event loop.
 
