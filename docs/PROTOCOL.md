@@ -98,4 +98,10 @@ the last successful reply.
 | Cancelled by the station | `23004` (answer `24004 RSLT 200 REASON 16`, then `30031`, when the call was taken) |
 | Ended | `23003` |
 | Take the call | `30011`/`30012` (video), `24001` READY_NFY, `30021` ADD_SND_USER (microphone) → `31021`, `24002` REPLY → `25001`, `23008` CALL_STA_REQ `RSLT 200` → `24008` |
+| Answered by another phone | `25001` whose `PCLIID` is another client, or `24002` `RSLT 200` from another client on the call `CID` |
 | Decline | `23008` `RSLT 603`, then `30031` |
+
+`25001` (REP_RCV_NFY) answers a `24002` REPLY and names, in `PCLIID`, the
+first client that answered the call. A client that was not first leaves the
+relay (`30031`) without sending `23003`. The maximum ring and conversation
+durations enforced by the station are unknown.

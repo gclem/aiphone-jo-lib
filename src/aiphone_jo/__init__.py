@@ -6,7 +6,15 @@ See the README for supported features and known limitations.
 
 from __future__ import annotations
 
-from .client import AiphoneJoClient, CallSession, MonitorSession, RelaySession
+from .client import (
+    AiphoneJoClient,
+    AnswerCall,
+    CallSession,
+    MonitorSession,
+    RelaySession,
+    SendOffer,
+    Talk,
+)
 from .cloud_api import (
     RoomInfo,
     Terminal,
@@ -25,6 +33,8 @@ from .exceptions import (
     PAIRING_RSLT_REASONS,
     RETRY_ON_SAME_CONNECTION,
     AiphoneJoError,
+    CallAnsweredElsewhereError,
+    CallEndedError,
     CloudApiError,
     CloudAuthError,
     CloudConnectionError,
@@ -56,6 +66,7 @@ from .exceptions import (
 from .live import LiveMonitor, Negotiator, SessionEndCallback
 from .models import (
     AiphoneEvent,
+    CallEndReason,
     CallStatus,
     CallUpdatedEvent,
     ConnectionStateEvent,
@@ -85,6 +96,10 @@ __all__ = [
     "AiphoneEvent",
     "AiphoneJoClient",
     "AiphoneJoError",
+    "AnswerCall",
+    "CallAnsweredElsewhereError",
+    "CallEndReason",
+    "CallEndedError",
     "CallSession",
     "CallStatus",
     "CallUpdatedEvent",
@@ -131,11 +146,13 @@ __all__ = [
     "ResponseTimeoutError",
     "RingEvent",
     "RoomInfo",
+    "SendOffer",
     "SessionEndCallback",
     "SessionEndedBy",
     "SessionEndedEvent",
     "SessionError",
     "StationBusyError",
+    "Talk",
     "Terminal",
     "UntrustedPeerError",
     "__version__",

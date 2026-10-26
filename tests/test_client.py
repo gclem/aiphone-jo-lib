@@ -11,6 +11,9 @@ import pytest
 
 from aiphone_jo import (
     AiphoneJoClient,
+    CallAnsweredElsewhereError,
+    CallEndedError,
+    CallEndReason,
     CallStatus,
     CallUpdatedEvent,
     CloudAuthError,
@@ -288,14 +291,15 @@ async def test_ring_tracking(client: AiphoneJoClient, broker: FakeBroker) -> Non
     assert "station-cid-1" not in repr(call)
     connection.inject({"HEADER": {"MID": "23004", "CID": "other", "RSLT": 0}})
     connection.inject(
-        {"HEADER": {"MID": "24002", "CID": "station-cid-1", "CLIID": "phone", "RSLT": 200}}
+        {"HEADER": {"MID": "24002", "CID": "station-cid-1", "CLIID": "phone", "RSLT": 603}}
     )
     connection.inject({"HEADER": {"MID": "23004", "CID": "station-cid-1", "RSLT": 0}})
     await settle()
     assert call.status is CallStatus.CANCELLED
+    assert call.end_reason is CallEndReason.CANCELLED_BY_STATION
     assert [s.mid for s in call.signals] == ["24002", "23004"]
     assert call.ended_at is not None
-    assert CallUpdatedEvent(call) in events
+    assert CallUpdatedEvent(call, CallEndReason.CANCELLED_BY_STATION) in events
     assert connection.published == []
 
 
@@ -306,6 +310,7 @@ async def test_ring_expires(credentials: CloudCredentials, broker: FakeBroker) -
     await asyncio.sleep(0.1)
     assert instance.current_call is not None
     assert instance.current_call.status is CallStatus.EXPIRED
+    assert instance.current_call.end_reason is CallEndReason.EXPIRED
     await instance.disconnect()
 
 
@@ -337,6 +342,7 @@ async def test_answer_call_full_sequence(client: AiphoneJoClient, broker: FakeBr
     await session.close()
     assert connection.mids[-2:] == ["30031", "23003"]
     assert current_status(client) is CallStatus.ENDED
+    assert client.current_call.end_reason is CallEndReason.ENDED_BY_CLIENT
 
 
 async def test_reject_call(client: AiphoneJoClient, broker: FakeBroker) -> None:
@@ -351,6 +357,7 @@ async def test_reject_call(client: AiphoneJoClient, broker: FakeBroker) -> None:
     ]
     assert client.current_call is not None
     assert client.current_call.status is CallStatus.REJECTED
+    assert client.current_call.end_reason is CallEndReason.REJECTED
     assert not client.current_call.engaged
     assert client.active_session is None
     await client.open_door(Output.UNLOCK, STATION)
@@ -370,6 +377,7 @@ async def test_station_cancels_an_engaged_call(client: AiphoneJoClient, broker: 
     ] == [("24004", 200, 16), ("30031", 0, None)]
     assert client.current_call is not None
     assert client.current_call.status is CallStatus.CANCELLED
+    assert client.current_call.end_reason is CallEndReason.CANCELLED_BY_STATION
     assert not session.active
     await session.close()
     assert client.active_session is None
@@ -548,3 +556,292 @@ async def test_open_door_output_arguments(client: AiphoneJoClient, broker: FakeB
         with pytest.warns(DeprecationWarning, match="gate"):
             await session.open(gate=Output.OPTION)
     assert broker.connection.mids[-4:-2] == ["26021", "26121"]
+
+
+# ------------------------------------------------------------ answer_call helper
+
+
+class Peer:
+    """Records the negotiation callbacks of ``answer_call``."""
+
+    def __init__(self) -> None:
+        self.offers: list[str] = []
+        self.talk_answers: list[str] = []
+
+    async def negotiate(self, offer: str) -> str:
+        self.offers.append(offer)
+        return "v=0\r\nour-answer\r\n"
+
+    async def talk(self, send_offer: Any) -> None:
+        self.talk_answers.append(await send_offer("v=0\r\nour-offer\r\n"))
+
+
+def sent(broker: FakeBroker) -> list[tuple[str, Any]]:
+    return [(m["HEADER"]["MID"], m["HEADER"]["RSLT"]) for _, m in broker.connection.published]
+
+
+async def test_answer_call_helper_full_sequence(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    events = record(client)
+    connection = broker.connection
+    connection.inject(ring("call-10", ckind=3), BROADCAST_TOPIC)
+    await settle()
+    peer = Peer()
+    async with client.answer_call(None, peer.negotiate, talk=peer.talk) as session:
+        assert session.call.status is CallStatus.TALKING
+        assert session.first_answer is True
+        assert client.active_session is session
+    assert peer.offers == [JANUS_OFFER]
+    assert peer.talk_answers == ["v=0\r\nanswer\r\n"]
+    assert sent(broker) == [
+        ("30011", 0),
+        ("30012", 0),
+        ("24001", 0),
+        ("30021", 0),
+        ("24002", 200),
+        ("23008", 200),
+        ("30031", 0),
+        ("23003", 0),
+    ]
+    assert connection.published[1][1]["BODY"]["SDP"] == "v=0\r\nour-answer\r\n"
+    assert connection.published[3][1]["BODY"]["SDP"] == "v=0\r\nour-offer\r\n"
+    call = session.call
+    assert (call.status, call.end_reason) == (CallStatus.ENDED, CallEndReason.ENDED_BY_CLIENT)
+    assert CallUpdatedEvent(call, CallEndReason.ENDED_BY_CLIENT) in events
+    assert client.active_session is None
+
+
+async def test_answer_call_without_talk_skips_the_talk_path(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    broker.connection.inject(ring("call-11"))
+    await settle()
+    session = await client.answer_call(client.current_call, Peer().negotiate)
+    assert session.call.status is CallStatus.TALKING
+    assert [mid for mid, _ in sent(broker)] == ["30011", "30012", "24001", "24002", "23008"]
+    await session.close()
+    assert client.active_session is None
+
+
+async def test_talk_requires_negotiate(client: AiphoneJoClient, broker: FakeBroker) -> None:
+    broker.connection.inject(ring("call-12"))
+    await settle()
+    with pytest.raises(InvalidInputError, match="talk requires negotiate"):
+        await client.answer_call(talk=Peer().talk)
+    assert client.active_session is None
+
+
+async def test_answered_elsewhere_during_answer(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    events = record(client)
+
+    def responder(message: dict[str, Any]) -> list[dict[str, Any]]:
+        if message["HEADER"]["MID"] == "24002":
+            return [reply_to(message, "25001", header={"PCLIID": "other-phone"})]
+        return default_responder(message)
+
+    broker.responder = responder
+    broker.connection.inject(ring("call-13"))
+    await settle()
+    with pytest.raises(CallAnsweredElsewhereError) as caught:
+        async with client.answer_call(None, Peer().negotiate):
+            pytest.fail("must not pick up")
+    assert caught.value.reason is CallEndReason.ANSWERED_ELSEWHERE
+    await settle()
+    # Only the relay is left: no 23008 and no 23003 that could end the other phone's call.
+    assert [mid for mid, _ in sent(broker)] == ["30011", "30012", "24001", "24002", "30031"]
+    call = client.current_call
+    assert call is not None
+    assert (call.status, call.end_reason) == (
+        CallStatus.ANSWERED_ELSEWHERE,
+        CallEndReason.ANSWERED_ELSEWHERE,
+    )
+    assert not call.engaged
+    assert CallUpdatedEvent(call, CallEndReason.ANSWERED_ELSEWHERE) in events
+    assert client.active_session is None
+
+
+async def test_reply_of_another_phone_ends_a_ringing_call(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    connection = broker.connection
+    connection.inject(ring("call-14"), BROADCAST_TOPIC)
+    await settle()
+    own = client.credentials.client_id
+    for cliid in ("", own, "station"):
+        connection.inject(
+            {"HEADER": {"MID": "24002", "CID": "call-14", "CLIID": cliid, "RSLT": 200}},
+            BROADCAST_TOPIC,
+        )
+    connection.inject({"HEADER": {"MID": "25001", "CID": "call-14", "PCLIID": own}})
+    await settle()
+    assert current_status(client) is CallStatus.RINGING
+    connection.inject(
+        {"HEADER": {"MID": "24002", "CID": "call-14", "CLIID": "phone-2", "RSLT": 200}},
+        BROADCAST_TOPIC,
+    )
+    await settle()
+    assert current_status(client) is CallStatus.ANSWERED_ELSEWHERE
+    assert connection.published == []
+
+
+async def test_notify_naming_another_phone_ends_a_ringing_call(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    connection = broker.connection
+    connection.inject(ring("call-15"))
+    connection.inject({"HEADER": {"MID": "25001", "CID": "call-15", "PCLIID": "phone-2"}})
+    await settle()
+    assert client.current_call is not None
+    assert client.current_call.end_reason is CallEndReason.ANSWERED_ELSEWHERE
+
+
+async def test_reply_of_another_phone_after_ours_is_ignored(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    connection = broker.connection
+    connection.inject(ring("call-16"))
+    await settle()
+    session = await client.answer_call()
+    await session.reply()
+    assert session.first_answer is True
+    connection.inject(
+        {"HEADER": {"MID": "24002", "CID": "call-16", "CLIID": "phone-2", "RSLT": 200}}
+    )
+    await settle()
+    assert session.call.status is CallStatus.RINGING
+    assert await session.start()
+    await session.close()
+
+
+async def test_reply_of_another_phone_while_engaged(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    connection = broker.connection
+    connection.inject(ring("call-17"))
+    await settle()
+    session = await client.answer_call()
+    await session.ready()
+    connection.inject(
+        {"HEADER": {"MID": "24002", "CID": "call-17", "CLIID": "phone-2", "RSLT": 200}}
+    )
+    await settle()
+    assert not session.active
+    assert session.ended_by is SessionEndedBy.STATION
+    assert connection.mids[-1] == "30031"
+    with pytest.raises(CallAnsweredElsewhereError):
+        await session.reply()
+    await session.close()
+    assert client.active_session is None
+
+
+async def test_negotiation_failure_leaves_the_call_ringing(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    broker.connection.inject(ring("call-18"))
+    await settle()
+
+    async def broken(offer: str) -> str:
+        raise RuntimeError("no peer")
+
+    with pytest.raises(RuntimeError, match="no peer"):
+        await client.answer_call(None, broken)
+    assert [mid for mid, _ in sent(broker)] == ["30011", "30031"]
+    call = client.current_call
+    assert call is not None
+    assert (call.status, call.engaged, call.end_reason) == (CallStatus.RINGING, False, None)
+    assert client.active_session is None
+    async with client.answer_call(call, Peer().negotiate) as session:
+        assert session.call.status is CallStatus.TALKING
+
+
+async def test_cancelled_answer_withdraws(client: AiphoneJoClient, broker: FakeBroker) -> None:
+    broker.connection.inject(ring("call-19"))
+    await settle()
+    started = asyncio.Event()
+
+    async def slow(offer: str) -> str:
+        started.set()
+        await asyncio.sleep(10)
+        return ""
+
+    task = asyncio.create_task(client.answer_call(None, slow).__aenter__())
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert [mid for mid, _ in sent(broker)] == ["30011", "30031"]
+    assert client.active_session is None
+
+
+async def test_station_cancels_while_answering(client: AiphoneJoClient, broker: FakeBroker) -> None:
+    def responder(message: dict[str, Any]) -> list[dict[str, Any]]:
+        header = message["HEADER"]
+        if header["MID"] == "30012":
+            # The visitor gives up before the relay answers.
+            return [{"HEADER": {"MID": "23004", "CID": header["CID"], "RSLT": 0}}]
+        return default_responder(message)
+
+    broker.responder = responder
+    broker.connection.inject(ring("call-20"))
+    await settle()
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    with pytest.raises(CallEndedError) as caught:
+        await client.answer_call(None, Peer().negotiate)
+    assert loop.time() - started < 0.4  # the pending request failed at once
+    assert caught.value.reason is CallEndReason.CANCELLED_BY_STATION
+    assert not isinstance(caught.value, CallAnsweredElsewhereError)
+    await settle()
+    assert [mid for mid, _ in sent(broker)] == ["30011", "30012", "24004", "30031"]
+    assert current_status(client) is CallStatus.CANCELLED
+    assert client.active_session is None
+
+
+async def test_rejected_pick_up_hangs_up(client: AiphoneJoClient, broker: FakeBroker) -> None:
+    def responder(message: dict[str, Any]) -> list[dict[str, Any]]:
+        if message["HEADER"]["MID"] == "23008":
+            return [reply_to(message, "24008", rslt=486)]
+        return default_responder(message)
+
+    broker.responder = responder
+    broker.connection.inject(ring("call-21"))
+    await settle()
+    with pytest.raises(CommandRejectedError, match="CALL_STA_REQ"):
+        await client.answer_call(None, Peer().negotiate)
+    assert [mid for mid, _ in sent(broker)][-3:] == ["23008", "30031", "23003"]
+    assert client.current_call is not None
+    assert client.current_call.end_reason is CallEndReason.ENDED_BY_CLIENT
+
+
+async def test_talk_answer_without_sdp(client: AiphoneJoClient, broker: FakeBroker) -> None:
+    def responder(message: dict[str, Any]) -> list[dict[str, Any]]:
+        if message["HEADER"]["MID"] == "30021":
+            return [reply_to(message, "31021")]
+        return default_responder(message)
+
+    broker.responder = responder
+    broker.connection.inject(ring("call-22"))
+    await settle()
+    peer = Peer()
+    with pytest.raises(CommandRejectedError, match="ADD_SND_USER"):
+        await client.answer_call(None, peer.negotiate, talk=peer.talk)
+    assert [mid for mid, _ in sent(broker)][-1] == "30031"
+    assert current_status(client) is CallStatus.RINGING
+
+
+async def test_station_hangs_up_a_call_in_progress(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    connection = broker.connection
+    connection.inject(ring("call-23"))
+    await settle()
+    async with client.answer_call(None, Peer().negotiate) as session:
+        connection.inject({"HEADER": {"MID": "23003", "CID": "call-23", "REASON": 0}})
+        await settle(10)
+        assert not session.active
+    assert session.call.end_reason is CallEndReason.ENDED_BY_STATION
+    assert connection.mids[-2:] == ["30031", "24003"]
+    assert client.active_session is None

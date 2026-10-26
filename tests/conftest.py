@@ -137,7 +137,7 @@ def default_responder(message: dict[str, Any]) -> list[dict[str, Any]]:
     if mid == "30021":
         return [reply_to(message, "31021", SDP="v=0\r\nanswer\r\n")]
     if mid == "24002":
-        return [reply_to(message, "25001")]
+        return [reply_to(message, "25001", header={"PCLIID": header["CLIID"]})]
     if mid == "23008" and header["RSLT"] == 200:
         return [reply_to(message, "24008")]
     return []

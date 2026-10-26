@@ -6,6 +6,30 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `AiphoneJoClient.answer_call(call, negotiate, *, talk=None)` (experimental):
+  full pick-up sequence (30011/30012, 24001, optional 30021/31021 through
+  `talk(send_offer)`, 24002 → 25001, 23008 → 24008), usable as an async
+  context manager that hangs up on exit, with a guaranteed teardown on error.
+- `CallEndReason`, `IncomingCall.end_reason` and `CallUpdatedEvent.reason`:
+  answered elsewhere, ended or cancelled by the station, expired, rejected,
+  ended by this client.
+- `CallStatus.ANSWERED_ELSEWHERE`, `CallSession.first_answer`,
+  `CallEndedError` and `CallAnsweredElsewhereError`.
+- `aiphone_jo.sdp.extract_section()`: reduce an offer to one media section and
+  rebuild the complete answer with the other sections rejected;
+  `media_sections()` and `MediaSection` describe the sections of an SDP.
+
+### Changed
+
+- `answer_call()` returns an `AnswerCall` object; `await client.answer_call()`
+  still returns the `CallSession` as before.
+- A ringing call now ends with `answered_elsewhere` when another phone
+  answers it, instead of staying `ringing` until it is cancelled.
+- Requests still waiting on a call fail at once with `CallEndedError` when the
+  call ends.
+
 ## [0.3.0] - 2026-10-26
 
 ### Added

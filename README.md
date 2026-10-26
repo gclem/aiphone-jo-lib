@@ -29,8 +29,8 @@ Home Assistant integration.
 | Station-side end of session (~60 s, 23003 → 30031 + 24003) | automatic | Supported |
 | Video/audio signaling (Janus offer 31011, answer 30012) | `MonitorSession.request_offer()` / `send_answer()`, `live_monitor()` | Supported |
 | Snapshots and live video (optional `media` extra, aiortc) | `snapshot()`, `video_stream()` | Experimental |
-| Doorbell detection (23001), cancel (23004) | `RingEvent`, `CallUpdatedEvent` | Experimental |
-| Answering a call (24001/30021/24002/23008), declining (603) | `answer_call()` | Experimental |
+| Doorbell detection (23001), cancel (23004), end reasons | `RingEvent`, `CallUpdatedEvent` | Experimental |
+| Answering a call (30011/30012, 24001, 30021, 24002 → 25001, 23008), declining (603) | `answer_call()` | Experimental |
 | Unregistering a terminal (`/deleteClientInfo`) | `unregister()`, `PairingFlow.cancel()` | Experimental |
 | Lock (26032) | `messages.build_lock_request()` (builder only) | Untested |
 
@@ -250,6 +250,69 @@ async def negotiate(offer_sdp: str) -> str:
     return restore(answer)
 ```
 
+An offer can also be reduced to a single media section, for a peer that only
+handles one of them; `restore(answer)` rebuilds the complete answer with the
+other sections rejected (port 0, `a=inactive`, removed from `BUNDLE`):
+
+```python
+from aiphone_jo.sdp import extract_section
+
+audio_offer, restore = extract_section(offer_sdp, "audio", direction="sendrecv")
+answer_sdp = restore(await audio_only_peer.answer(audio_offer))
+```
+
+`media_sections(sdp)` describes the sections (kind, port, mid, direction...).
+
+### Answering a call (experimental)
+
+`answer_call()` runs the whole pick-up of the ringing call and hangs up when
+the block exits:
+
+```python
+async def negotiate(offer_sdp: str) -> str:
+    ...  # same contract as live_monitor(): complete answer to the relay's offer
+
+async def talk(send_offer) -> None:            # optional: our microphone
+    offer = ...                                # SDP offer of our audio sender
+    answer = await send_offer(offer)           # ADD_SND_USER_REQ 30021 -> 31021
+    ...                                        # apply the relay's answer
+
+async with client.answer_call(call, negotiate, talk=talk) as session:
+    ...  # talking (CallStatus.TALKING)
+```
+
+Sequence: `30011` (relay offer) → `negotiate` → `30012` → `24001`; then, if
+`talk` is given, `talk(send_offer)` (`30021` → `31021`); then `24002` →
+`25001`, and `23008` (`RSLT 200`) → `24008`. Without `talk`, the `30021` step
+is skipped: the call is answered but no audio is sent to the station.
+
+- If another phone answered first (`25001` naming another client),
+  `CallAnsweredElsewhereError` is raised and only the relay is left (`30031`):
+  the call is not hung up for the other phone.
+- On any other failure or cancellation, the call is hung up (`30031` then
+  `23003`) if it was ours, otherwise the relay is left and the call keeps
+  ringing on the other phones. `CallEndedError.reason` tells why a call ended
+  during the sequence.
+- `await client.answer_call(call, negotiate)` returns the `CallSession`
+  without hanging up at the end (call `close()` yourself), and
+  `await client.answer_call()` returns it before any message is sent, for a
+  manual sequence.
+
+When a call ends, `IncomingCall.end_reason` and `CallUpdatedEvent.reason` are
+set to a `CallEndReason`:
+
+| Reason | Cause |
+|---|---|
+| `answered_elsewhere` | another phone answered first (status `answered_elsewhere`) |
+| `ended_by_station` | the station hung up (`23003`) |
+| `cancelled_by_station` | the visitor or the station abandoned the call (`23004`) |
+| `expired` | nobody answered within `ring_timeout` (60 s by default) |
+| `rejected` | this client declined (`CallSession.reject()`) |
+| `ended_by_client` | this client hung up |
+
+The maximum ring and conversation durations enforced by the station are
+unknown.
+
 ### Home Assistant usage
 
 - **Config flow**: `discover()` then `PairingFlow` (the TLS connection stays
@@ -260,7 +323,8 @@ async def negotiate(offer_sdp: str) -> str:
   `ConnectionStateEvent` drives availability. `CloudAuthError`,
   `ConnectionStateEvent(auth_failed=True)` and `CredentialsExpiredError` map
   to re-authentication.
-- **Entities**: ring event / binary sensor (`RingEvent`, `CallUpdatedEvent`),
+- **Entities**: ring event / binary sensor (`RingEvent`, `CallUpdatedEvent`
+  and its `reason`),
   one button per lock output (`open_door`), lock status sensor, and a camera
   using `snapshot()` for still images and `video_stream()` or
   `live_monitor()` for live view.
@@ -296,7 +360,8 @@ All exceptions derive from `AiphoneJoError`:
 - `CloudConnectionError`, with `CloudAuthError` (identity refused);
 - `InvalidCredentialsError`, with `CredentialsExpiredError`;
 - `NotConnectedError`, `ResponseTimeoutError`, `CommandRejectedError`
-  (`StationBusyError` for `RSLT 486`) and `SessionError`.
+  (`StationBusyError` for `RSLT 486`) and `SessionError`, with
+  `CallEndedError` (`reason`) and `CallAnsweredElsewhereError`.
 
 ## Security and privacy
 
