@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-26
+
 ### Added
 
 - `Output` enum (`Output.UNLOCK` = lock output 1, `Output.OPTION` = lock
