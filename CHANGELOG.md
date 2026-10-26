@@ -6,6 +6,27 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `Output` enum (`Output.UNLOCK` = lock output 1, `Output.OPTION` = lock
+  output 2) with `Output.number`, `Output.from_number()` and `Output.coerce()`;
+  `open_door()` and `RelaySession.open()` also accept `1` and `2`.
+- CLI: `aiphone-jo open --output 1|2`.
+- Both lock outputs and the session teardown are verified on a JO-1MDW.
+
+### Changed
+
+- Lock outputs are described as output 1 (unlock) and output 2 (option
+  output); their effect depends on the installation. The documentation no
+  longer refers to "large" or "small" openings.
+- `open_door()` and `RelaySession.open()` take `output` as first argument.
+
+### Deprecated
+
+- `Gate` (alias of `Output`; `Gate.MAIN` is `Output.UNLOCK`), the `gate=`
+  keyword of `open_door()` / `RelaySession.open()`, and the CLI options
+  `open --big` / `open --small` (hidden; use `--output 1` / `--output 2`).
+
 ## [0.2.1] - 2026-10-26
 
 ### Added
@@ -63,7 +84,7 @@ All notable changes to `aiphone-jo` are documented here. The format follows
   `/getRoomInfo`.
 - `CloudCredentials` validation and serialization, non-blocking SSL context.
 - MQTT client with automatic reconnection and monitor-wide topic subscription.
-- Door release (`open_door`, large and small openings), lock status,
+- Door release (`open_door`, lock outputs 1 and 2), lock status,
   monitoring sessions with Janus SDP signaling, automatic answer to the
   station-side end of session.
 - Doorbell tracking and call answering (experimental).

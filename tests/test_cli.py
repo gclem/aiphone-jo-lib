@@ -12,7 +12,6 @@ import pytest
 from aiphone_jo import (
     CloudCredentials,
     DiscoveredMonitor,
-    Gate,
     InvalidInputError,
     NoMonitorFoundError,
     PairingFailureReason,
@@ -24,14 +23,27 @@ from aiphone_jo import (
 from .conftest import FakeBroker, Pki, credentials_input
 
 
-def test_parser_requires_a_gate_for_open() -> None:
+def test_open_help_hides_deprecated_options(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["open", "--help"])
+    help_text = capsys.readouterr().out
+    assert "--output" in help_text
+    assert "--big" not in help_text
+    assert "--small" not in help_text
+
+
+def test_parser_requires_an_output_for_open() -> None:
     parser = cli.build_parser()
-    with pytest.raises(SystemExit):
-        parser.parse_args(["open", "--terminal", "102"])
-    with pytest.raises(SystemExit):
-        parser.parse_args(["open", "--big", "--small", "--terminal", "102"])
-    args = parser.parse_args(["--yes", "open", "--small", "--terminal", "102"])
-    assert (args.small, args.terminal, args.yes) == (True, 102, True)
+    for argv in (
+        ["open", "--terminal", "102"],
+        ["open", "--output", "3", "--terminal", "102"],
+        ["open", "--output", "1", "--small", "--terminal", "102"],
+        ["open", "--big", "--small", "--terminal", "102"],
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+    args = parser.parse_args(["--yes", "open", "--output", "2", "--terminal", "102"])
+    assert (args.output, args.terminal, args.yes) == (2, 102, True)
 
 
 def test_state_file_is_private_and_round_trips(
@@ -89,13 +101,38 @@ def test_open_requires_typed_confirmation(
     cli.save_state(path, credentials, {})
     _patch_client(monkeypatch, broker)
     monkeypatch.setattr("builtins.input", lambda prompt: "yes")
-    assert cli.main(["--credentials", str(path), "open", "--big", "--terminal", "102"]) == 1
+    argv = ["--credentials", str(path), "open", "--terminal", "102", "--output"]
+    assert cli.main([*argv, "1"]) == 1
     assert "Cancelled" in capsys.readouterr().err
     assert broker.connections == []
     monkeypatch.setattr("builtins.input", lambda prompt: cli.OPEN_CONFIRMATION)
-    assert cli.main(["--credentials", str(path), "open", "--small", "--terminal", "102"]) == 0
+    assert cli.main([*argv, "2"]) == 0
+    assert "output 2 (option output)" in capsys.readouterr().out
     assert broker.connection.mids == ["30001", "23021", "26121", "30031", "23003"]
-    assert Gate.OPTION.value == "option"
+    assert cli.main([*argv, "1"]) == 0
+    assert broker.connection.mids[-3] == "26021"
+
+
+@pytest.mark.parametrize(
+    ("option", "mid", "replacement"),
+    [("--big", "26021", "--output 1"), ("--small", "26121", "--output 2")],
+)
+def test_deprecated_open_options_still_work(
+    tmp_path: Path,
+    credentials: CloudCredentials,
+    broker: FakeBroker,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    option: str,
+    mid: str,
+    replacement: str,
+) -> None:
+    path = tmp_path / "credentials.json"
+    cli.save_state(path, credentials, {})
+    _patch_client(monkeypatch, broker)
+    assert cli.main(["--credentials", str(path), "--yes", "open", option, "--terminal", "102"]) == 0
+    assert broker.connection.mids[2] == mid
+    assert f"{option} is deprecated, use {replacement}" in capsys.readouterr().err
 
 
 def test_status_and_ring_watch(

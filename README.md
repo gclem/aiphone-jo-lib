@@ -23,8 +23,8 @@ Home Assistant integration.
 | Room info: terminals, camera stations (`/getRoomInfo`) | `get_room_info()` | Supported |
 | MQTT connection (mutual TLS), own topic + monitor-wide topic | `AiphoneJoClient.connect()` | Supported |
 | Lock status (26031 → 27031) | `get_lock_status()` | Supported |
-| Large opening, lock output 1 (26021 → 27021) | `open_door(Gate.MAIN, …)` | Supported |
-| Small opening, lock output 2 (26121 → 27121) | `open_door(Gate.OPTION, …)` | Supported |
+| Lock output 1, unlock (26021 → 27021) | `open_door(Output.UNLOCK, …)` | Supported |
+| Lock output 2, option output (26121 → 27121) | `open_door(Output.OPTION, …)` | Supported |
 | Monitoring session (30001 → 23021) and clean teardown (30031 + 23003) | `monitor()` | Supported |
 | Station-side end of session (~60 s, 23003 → 30031 + 24003) | automatic | Supported |
 | Video/audio signaling (Janus offer 31011, answer 30012) | `MonitorSession.request_offer()` / `send_answer()` | Supported (signaling only) |
@@ -32,6 +32,10 @@ Home Assistant integration.
 | Answering a call (24001/30021/24002/23008), declining (603) | `answer_call()` | Experimental |
 | Unregistering a terminal (`/deleteClientInfo`) | `unregister()`, `PairingFlow.cancel()` | Experimental |
 | Lock (26032) | `messages.build_lock_request()` (builder only) | Untested |
+
+Both lock outputs and the session teardown (client side and station side) are
+verified on a JO-1MDW. Each output command sends a pulse on the corresponding
+output of the monitor; what it opens depends on how the installation is wired.
 
 ## Known limitations
 
@@ -152,7 +156,7 @@ smartphone list is managed from the monitor.
 ### Cloud client
 
 ```python
-from aiphone_jo import AiphoneJoClient, CloudCredentials, Gate, RingEvent
+from aiphone_jo import AiphoneJoClient, CloudCredentials, Output, RingEvent
 
 credentials = CloudCredentials.from_storage(stored_dict)
 client = AiphoneJoClient(credentials, session=session)
@@ -162,8 +166,8 @@ await client.connect()                            # reconnects automatically
 status = await client.get_lock_status()
 stations = (await client.get_room_info()).camera_terminals
 
-await client.open_door(Gate.MAIN, stations[0])    # large opening (output 1)
-await client.open_door(Gate.OPTION, stations[0])  # small opening (output 2)
+await client.open_door(Output.UNLOCK, stations[0])  # lock output 1 (or: 1)
+await client.open_door(Output.OPTION, stations[0])  # lock output 2 (or: 2)
 
 async with client.monitor(stations[0]) as live:   # real monitoring call
     offer = await live.request_offer()            # Janus SDP offer
@@ -196,7 +200,7 @@ optional media helper is planned (see [ROADMAP.md](ROADMAP.md)).
   `ConnectionStateEvent(auth_failed=True)` and `CredentialsExpiredError` map
   to re-authentication.
 - **Entities**: ring event / binary sensor (`RingEvent`, `CallUpdatedEvent`),
-  buttons for the large and small openings (`open_door`), lock status sensor,
+  one button per lock output (`open_door`), lock status sensor,
   camera later.
 - Use `CloudCredentials.async_create_ssl_context()` (already done by
   `connect()`) to avoid blocking the event loop.
@@ -210,8 +214,8 @@ aiphone-jo discover                          # find monitors in "add smartphone"
 aiphone-jo pair --name Home                  # pair and save the identity (mode 0600)
 aiphone-jo rooms                             # list terminals and camera stations
 aiphone-jo status                            # lock status
-aiphone-jo open --big --terminal <id>        # large opening
-aiphone-jo open --small --terminal <id>      # small opening
+aiphone-jo open --output 1 --terminal <id>   # lock output 1 (unlock)
+aiphone-jo open --output 2 --terminal <id>   # lock output 2 (option output)
 aiphone-jo ring-watch                        # print rings and events
 aiphone-jo unregister                        # delete the terminal from the cloud
 ```

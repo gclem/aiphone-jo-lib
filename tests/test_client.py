@@ -22,6 +22,7 @@ from aiphone_jo import (
     InvalidInputError,
     MessageEvent,
     NotConnectedError,
+    Output,
     ResponseTimeoutError,
     RingEvent,
     SessionEndedBy,
@@ -135,12 +136,15 @@ async def test_get_lock_status_rejected_and_timeout(
         await client.get_lock_status()
 
 
-@pytest.mark.parametrize(("gate", "mid"), [(Gate.MAIN, "26021"), (Gate.OPTION, "26121")])
+@pytest.mark.parametrize(
+    ("output", "mid"),
+    [(Output.UNLOCK, "26021"), (Output.OPTION, "26121"), (Gate.MAIN, "26021"), (2, "26121")],
+)
 async def test_open_door_runs_the_door_release_sequence(
-    client: AiphoneJoClient, broker: FakeBroker, gate: Gate, mid: str
+    client: AiphoneJoClient, broker: FakeBroker, output: Output | int, mid: str
 ) -> None:
     events = record(client)
-    await client.open_door(gate, STATION)
+    await client.open_door(output, STATION)
     connection = broker.connection
     assert connection.mids == ["30001", "23021", mid, "30031", "23003"]
     start, monitor, leave, disconnect = (
@@ -155,14 +159,14 @@ async def test_open_door_runs_the_door_release_sequence(
         SessionEndedEvent(start["CID"], SessionEndedBy.CLIENT)
     ]
     assert client.active_session is None
-    await client.open_door(gate, 102)
+    await client.open_door(output, 102)
     assert connection.mids.count("30001") == 2
     assert connection.headers("30001")[1]["CID"] != start["CID"]
 
 
 async def test_open_door_requires_a_station(client: AiphoneJoClient) -> None:
     with pytest.raises(InvalidInputError):
-        await client.open_door(Gate.MAIN)
+        await client.open_door(Output.UNLOCK)
 
 
 async def test_rejected_unlock_still_closes_the_session(
@@ -175,7 +179,7 @@ async def test_rejected_unlock_still_closes_the_session(
 
     broker.responder = responder
     with pytest.raises(CommandRejectedError, match="UNLOCK_REQ"):
-        await client.open_door(Gate.MAIN, STATION)
+        await client.open_door(Output.UNLOCK, STATION)
     assert broker.connection.mids == ["30001", "23021", "26021", "30031", "23003"]
     assert client.active_session is None
 
@@ -192,11 +196,11 @@ async def test_busy_station_raises_and_releases_the_relay(
 
     broker.responder = responder
     with pytest.raises(StationBusyError) as err:
-        await client.open_door(Gate.MAIN, STATION)
+        await client.open_door(Output.UNLOCK, STATION)
     assert err.value.rslt == 486
     assert broker.connection.mids == ["30001", "23021", "30031"]
     broker.responder = default_responder
-    await client.open_door(Gate.MAIN, STATION)
+    await client.open_door(Output.UNLOCK, STATION)
 
 
 async def test_rejected_relay_start(
@@ -209,7 +213,7 @@ async def test_rejected_relay_start(
 
     broker.responder = responder
     with pytest.raises(CommandRejectedError, match="RSLT=400"):
-        await client.open_door(Gate.MAIN, STATION)
+        await client.open_door(Output.UNLOCK, STATION)
     assert broker.connection.mids == ["30001"]
     assert client.active_session is None
 
@@ -224,7 +228,7 @@ async def test_replies_with_another_cid_are_ignored(
         return default_responder(message)
 
     broker.responder = responder
-    await client.open_door(Gate.MAIN, STATION)
+    await client.open_door(Output.UNLOCK, STATION)
 
 
 async def test_monitor_session_media_signaling(client: AiphoneJoClient, broker: FakeBroker) -> None:
@@ -233,7 +237,7 @@ async def test_monitor_session_media_signaling(client: AiphoneJoClient, broker: 
         offer = await session.request_offer()
         assert offer == JANUS_OFFER
         await session.send_answer("v=0\r\nanswer\r\n")
-        await client.open_door(Gate.OPTION)
+        await client.open_door(Output.OPTION)
     connection = broker.connection
     assert connection.mids == ["30001", "23021", "30011", "30012", "26121", "30031", "23003"]
     assert connection.published[3][1]["BODY"] == {"SDP": "v=0\r\nanswer\r\n"}
@@ -262,7 +266,7 @@ async def test_station_closes_the_session(client: AiphoneJoClient, broker: FakeB
     await settle()
     assert await session.close() == {}
     assert connection.mids[published:] == ["30031", "24003"]
-    await client.open_door(Gate.MAIN, STATION)
+    await client.open_door(Output.UNLOCK, STATION)
 
 
 async def test_ring_tracking(client: AiphoneJoClient, broker: FakeBroker) -> None:
@@ -349,7 +353,7 @@ async def test_reject_call(client: AiphoneJoClient, broker: FakeBroker) -> None:
     assert client.current_call.status is CallStatus.REJECTED
     assert not client.current_call.engaged
     assert client.active_session is None
-    await client.open_door(Gate.MAIN, STATION)
+    await client.open_door(Output.UNLOCK, STATION)
 
 
 async def test_station_cancels_an_engaged_call(client: AiphoneJoClient, broker: FakeBroker) -> None:
@@ -403,7 +407,7 @@ async def test_connection_loss_and_reconnection(
     states = [e.connected for e in events if isinstance(e, ConnectionStateEvent)]
     assert states == [False, True]
     await session.close()
-    await client.open_door(Gate.MAIN, STATION)
+    await client.open_door(Output.UNLOCK, STATION)
 
 
 async def test_pending_request_fails_when_the_connection_drops(
@@ -469,7 +473,7 @@ async def test_debug_logs_never_contain_identity_or_secrets(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level("DEBUG", logger="aiphone_jo")
-    await client.open_door(Gate.MAIN, STATION)
+    await client.open_door(Output.UNLOCK, STATION)
     broker.connection.inject(ring("call-secret"))
     await settle()
     text = caplog.text
@@ -517,3 +521,30 @@ async def test_connect_reports_auth_failure(
     await instance.connect()
     assert not instance.auth_failed
     await instance.disconnect()
+
+
+def test_output_enum_is_backward_compatible() -> None:
+    assert Gate is Output
+    assert getattr(Gate, "MAIN") is Output.UNLOCK  # noqa: B009 - alias lookup
+    assert Gate.OPTION is Output.OPTION
+    assert list(Output) == [Output.UNLOCK, Output.OPTION]
+    assert (Output.UNLOCK.value, Output.OPTION.value) == ("main", "option")
+    assert (Output.UNLOCK.number, Output.OPTION.number) == (1, 2)
+    assert Output.coerce("main") is Output.UNLOCK
+    assert Output.coerce(2) is Output.OPTION
+    for bad in (0, 3, True, "large"):
+        with pytest.raises(ValueError, match=r"output|valid"):
+            Output.coerce(bad)
+
+
+async def test_open_door_output_arguments(client: AiphoneJoClient, broker: FakeBroker) -> None:
+    with pytest.warns(DeprecationWarning, match="'gate' keyword"):
+        await client.open_door(terminal=STATION, gate=Gate.OPTION)
+    assert broker.connection.mids[2] == "26121"
+    with pytest.raises(InvalidInputError, match="expected 1 or 2"):
+        await client.open_door(3, STATION)
+    async with client.monitor(STATION) as session:
+        await session.open(1)
+        with pytest.warns(DeprecationWarning, match="gate"):
+            await session.open(gate=Output.OPTION)
+    assert broker.connection.mids[-4:-2] == ["26021", "26121"]
