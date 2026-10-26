@@ -15,6 +15,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 - `AiphoneJoClient.live_monitor()` / `LiveMonitor`: monitoring session renewed
   automatically, with an `async (offer_sdp) -> answer_sdp` negotiation callback
   and no media dependency.
+- `aiphone_jo.sdp.normalize_mids()`: numeric mids for WebRTC servers that need
+  them, with a `restore()` function for the answer.
 - `AiphoneJoClient(camera_terminal=...)` and `start_camera_session()`: default
   camera station, or the first non-busy one from `/getRoomInfo`.
 

@@ -234,6 +234,22 @@ The relay is a Janus gateway (ICE-lite): it sends the offer (H264 video with
 `profile-level-id=42e01f`, `packetization-mode=1`; PCMU audio) and expects a
 complete, receive-only answer.
 
+The relay names its media sections `audio` and `video` and advertises the
+`sdes:mid` RTP header extension. Some WebRTC servers (for example go2rtc)
+expect numeric mids and answer `inactive` otherwise.
+`aiphone_jo.sdp.normalize_mids(offer)` returns the offer with numeric mids and
+without that extension, plus a `restore(answer)` function that puts the
+original mids back before the answer is sent to the relay:
+
+```python
+from aiphone_jo.sdp import normalize_mids
+
+async def negotiate(offer_sdp: str) -> str:
+    offer, restore = normalize_mids(offer_sdp)
+    answer = await other_webrtc_server.answer(offer)
+    return restore(answer)
+```
+
 ### Home Assistant usage
 
 - **Config flow**: `discover()` then `PairingFlow` (the TLS connection stays
