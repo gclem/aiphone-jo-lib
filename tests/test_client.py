@@ -845,3 +845,74 @@ async def test_station_hangs_up_a_call_in_progress(
     assert session.call.end_reason is CallEndReason.ENDED_BY_STATION
     assert connection.mids[-2:] == ["30031", "24003"]
     assert client.active_session is None
+
+
+async def test_withdraw_leaves_the_relay_only(client: AiphoneJoClient, broker: FakeBroker) -> None:
+    events = record(client)
+    connection = broker.connection
+    connection.inject(ring("call-30"))
+    await settle()
+    session = await client.answer_call()
+    assert await session.request_offer() == JANUS_OFFER
+    await session.send_answer("v=0\r\nour-answer\r\n")
+    assert await session.withdraw() == {"leave": 200}
+    assert [mid for mid, _ in sent(broker)] == ["30011", "30012", "30031"]
+    assert connection.headers("30031")[0]["PCLIID"] == "station-1"
+    call = session.call
+    assert (call.status, call.engaged, call.end_reason) == (CallStatus.RINGING, False, None)
+    assert not session.active
+    assert session.ended_by is SessionEndedBy.CLIENT
+    assert SessionEndedEvent("call-30", SessionEndedBy.CLIENT) in events
+    assert not any(isinstance(event, CallUpdatedEvent) for event in events)
+    assert client.active_session is None
+    assert await session.withdraw() == {}
+    with pytest.raises(SessionError):
+        await session.request_offer()
+    async with client.answer_call(call, Peer().negotiate) as again:
+        assert again.call.status is CallStatus.TALKING
+
+
+async def test_withdraw_reports_a_failed_leave(
+    client: AiphoneJoClient, broker: FakeBroker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("aiphone_jo.client.END_SESSION_STEP_TIMEOUT", 0.05)
+
+    def responder(message: dict[str, Any]) -> list[dict[str, Any]]:
+        if message["HEADER"]["MID"] == "30031":
+            return []
+        return default_responder(message)
+
+    broker.responder = responder
+    broker.connection.inject(ring("call-31"))
+    await settle()
+    session = await client.answer_call()
+    steps = await session.withdraw()
+    assert str(steps["leave"]).startswith("error:")
+    assert client.active_session is None
+    assert current_status(client) is CallStatus.RINGING
+
+
+async def test_withdraw_expires_a_call_whose_ring_timed_out(
+    credentials: CloudCredentials, broker: FakeBroker
+) -> None:
+    instance = AiphoneJoClient(credentials, transport_factory=broker, ring_timeout=0.05)
+    await instance.connect()
+    broker.connection.inject(ring("call-32"))
+    await settle()
+    session = await instance.answer_call()
+    await asyncio.sleep(0.1)
+    assert session.call.status is CallStatus.RINGING
+    await session.withdraw()
+    assert session.call.end_reason is CallEndReason.EXPIRED
+    await instance.disconnect()
+
+
+async def test_private_withdraw_is_a_deprecated_alias(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    broker.connection.inject(ring("call-33"))
+    await settle()
+    session = await client.answer_call()
+    with pytest.warns(DeprecationWarning, match="withdraw"):
+        assert await session._withdraw() == {"leave": 200}
+    assert client.active_session is None

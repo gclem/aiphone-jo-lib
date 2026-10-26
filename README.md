@@ -297,6 +297,20 @@ is skipped: the call is answered but no audio is sent to the station.
   without hanging up at the end (call `close()` yourself), and
   `await client.answer_call()` returns it before any message is sent, for a
   manual sequence.
+- `CallSession.withdraw()` leaves the relay (`30031` only) without answering
+  or declining: no `24001`, `24002`, `23008` nor `23003` is sent, the call
+  keeps ringing and can be answered later. For example, to grab a picture of
+  the visitor while the call rings:
+
+  ```python
+  session = await client.answer_call(call)
+  try:
+      offer = await session.request_offer()
+      await session.send_answer(await negotiate(offer))
+      ...  # receive one video frame
+  finally:
+      await session.withdraw()
+  ```
 
 When a call ends, `IncomingCall.end_reason` and `CallUpdatedEvent.reason` are
 set to a `CallEndReason`:

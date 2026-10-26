@@ -6,6 +6,21 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `CallSession.withdraw()`: leave the relay of a ringing call (30031 only)
+  without answering or declining it, for example after grabbing a picture of
+  the visitor.
+
+### Deprecated
+
+- `CallSession._withdraw()`, replaced by `withdraw()`.
+
+### Fixed
+
+- A ringing call whose ring timeout elapsed while it was engaged now expires
+  when the client leaves it.
+
 ## [0.4.0] - 2026-10-26
 
 ### Added
