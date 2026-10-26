@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-26
+
 ### Added
 
 - Optional video support, `media` extra (aiortc and Pillow, experimental):
