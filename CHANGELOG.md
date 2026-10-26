@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-26
+
 ### Added
 
 - `CallSession.withdraw()`: leave the relay of a ringing call (30031 only)
