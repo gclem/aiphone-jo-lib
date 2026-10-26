@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-26
+
 ### Added
 
 - `AiphoneJoClient.answer_call(call, negotiate, *, talk=None)` (experimental):
