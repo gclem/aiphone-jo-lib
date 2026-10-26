@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      - name: Check that the tag matches the version and the changelog
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: >-
+          uv run python scripts/check_version.py
+          --tag "$TAG"
+          --notes-out release-notes.md
+          --github-output "$GITHUB_OUTPUT"
+      - run: uv run ruff check src tests scripts
+      - run: uv run ruff format --check src tests scripts
+      - run: uv run mypy
+      - run: uv run pytest
+      - run: uv build
+      - name: Check build artifacts and write checksums
+        run: |
+          uv run python scripts/check_version.py --dist dist
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: |
+            dist/
+            release-notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: GitHub Release
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            flags=()
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" dist/* --verify-tag \
+              --title "aiphone-jo $VERSION" --notes-file release-notes.md "${flags[@]}"
+          fi
+
+  notify:
+    name: Notify downstream
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Notify
+        env:
+          TOKEN: ${{ secrets.HASS_SYNC_TOKEN }}
+          REPOSITORY: ${{ vars.DOWNSTREAM_REPOSITORY }}
+          EVENT: ${{ vars.DOWNSTREAM_EVENT }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$REPOSITORY" ] || [ -z "$EVENT" ]; then
+            message="Notification not configured: skipped for $TAG."
+            echo "::warning title=Notification skipped::$message"
+            echo "### :warning: $message" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          GH_TOKEN="$TOKEN" gh api --method POST "repos/$REPOSITORY/dispatches" \
+            -f "event_type=$EVENT" \
+            -f "client_payload[version]=$VERSION" \
+            -f "client_payload[tag]=$TAG" \
+            -f "client_payload[sha]=$SHA"
+          echo "Notification sent for $TAG." >> "$GITHUB_STEP_SUMMARY"

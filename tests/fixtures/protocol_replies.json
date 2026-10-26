@@ -1,0 +1,149 @@
+{
+ "_comment": "Example protocol replies (field names, order and types). Every value is fictitious: identifiers, topics, timestamps, terminal ids, versions, ports and addresses (RFC 5737).",
+ "11001": {
+  "HEADER": {
+   "MID": "11001",
+   "VER": "1.0"
+  },
+  "BODY": {
+   "RSLT": 0,
+   "IPADDR": "192.0.2.46",
+   "PORT": 50000,
+   "SYS": 4,
+   "SYSVER": "00:00"
+  }
+ },
+ "27031": {
+  "HEADER": {
+   "MID": "27031",
+   "CLIID": "<station>",
+   "RSLT": 0,
+   "RCVTPC": "<recv>",
+   "VER": "1.2",
+   "SYS": "4",
+   "SID": "20240101120000000000"
+  },
+  "BODY": {
+   "ENTNR": 2,
+   "KEYINF": [
+    {
+     "KEYTP": 2,
+     "KEYSTS": 0
+    },
+    {
+     "KEYTP": 2,
+     "KEYSTS": 0
+    }
+   ]
+  }
+ },
+ "27021": {
+  "HEADER": {
+   "MID": "27021",
+   "CLIID": "<station>",
+   "AVID": 0,
+   "RSLT": 0,
+   "RCVTPC": "<recv>",
+   "VER": "1.2",
+   "SYS": "4",
+   "SID": "20240101120000000000"
+  },
+  "BODY": {
+   "REASON": 0
+  }
+ },
+ "27121": {
+  "HEADER": {
+   "MID": "27121",
+   "CLIID": "<station>",
+   "AVID": 0,
+   "RSLT": 0,
+   "RCVTPC": "<recv>",
+   "VER": "1.2",
+   "SYS": "4",
+   "SID": "20240101120000000000"
+  },
+  "BODY": {}
+ },
+ "31001_rejected": {
+  "HEADER": {
+   "MID": "31001",
+   "VER": "1.2",
+   "SYS": "4",
+   "CLIID": "<relay>",
+   "CID": "<cid>",
+   "SID": "20240101120000000000",
+   "RSLT": 400,
+   "Lambda": "send"
+  }
+ },
+ "24021_busy": {
+  "HEADER": {
+   "MID": "24021",
+   "CLIID": "<station>",
+   "DSP1": "Home",
+   "CKIND": 1,
+   "CID": "<cid>",
+   "RECKIND": 0,
+   "AVID": 0,
+   "RSLT": 486,
+   "SNDTPC": "<send>",
+   "REASON": 0,
+   "TMKIND": 5,
+   "TMID": 101,
+   "VER": "1.2",
+   "SYS": "4",
+   "LEN": 0,
+   "SID": "20240101120000000000"
+  }
+ },
+ "31031": {
+  "HEADER": {
+   "MID": "31031",
+   "VER": "1.2",
+   "SYS": "4",
+   "CLIID": "<relay>",
+   "CID": "<cid>",
+   "SID": "20240101120000000000",
+   "RSLT": 200,
+   "LEN": "0",
+   "Lambda": "send"
+  }
+ },
+ "23003_station": {
+  "HEADER": {
+   "MID": "23003",
+   "CLIID": "<station>",
+   "CKIND": 0,
+   "CID": "<cid>",
+   "RECKIND": 0,
+   "AVID": 0,
+   "RSLT": 0,
+   "SNDTPC": "<send>",
+   "RCVTPC": "<recv>",
+   "REASON": 0,
+   "VER": "1.2",
+   "SYS": "4",
+   "LEN": 0,
+   "SID": "20240101120000000000"
+  }
+ },
+ "24003": {
+  "HEADER": {
+   "MID": "24003",
+   "CLIID": "<station>",
+   "CKIND": 0,
+   "CID": "<cid>",
+   "RECKIND": 0,
+   "AVID": 0,
+   "RSLT": 200,
+   "SNDTPC": "<send>",
+   "RCVTPC": "<recv>",
+   "REASON": 0,
+   "VER": "1.2",
+   "SYS": "4",
+   "LEN": 0,
+   "SID": "20240101120000000000"
+  }
+ }
+}

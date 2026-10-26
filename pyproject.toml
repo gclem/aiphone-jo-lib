@@ -1,0 +1,98 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aiphone-jo"
+# Single source of truth: ``__version__`` in src/aiphone_jo/__init__.py.
+dynamic = ["version"]
+description = "Unofficial asyncio library for the Aiphone JO-1MDW intercom (pairing, MQTT, door release, ring, video signaling)."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+keywords = ["aiphone", "jo-1mdw", "intercom", "interphone", "home-assistant", "asyncio"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Home Automation",
+    "Typing :: Typed",
+]
+dependencies = [
+    "aiohttp>=3.9",
+    "aiomqtt>=2.3",
+    "cryptography>=42",
+    "ifaddr>=0.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/gclem/aiphone-jo-lib"
+Issues = "https://github.com/gclem/aiphone-jo-lib/issues"
+
+[project.scripts]
+aiphone-jo = "aiphone_jo.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+]
+
+[tool.hatch.version]
+path = "src/aiphone_jo/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aiphone_jo"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/aiphone_jo", "tests", "docs", "README.md", "CHANGELOG.md", "ROADMAP.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "ASYNC", "S", "PT", "C4", "RET", "PL"]
+ignore = [
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",
+    "RUF001", "RUF002", "RUF003", "ASYNC109",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["SIM117", "PLR0917", "S101", "S105", "S106", "PLC0415", "S311", "SLF001", "ASYNC240", "ASYNC230"]
+# The CLI is a short-lived interactive tool: blocking file access is fine there.
+"src/aiphone_jo/cli.py" = ["ASYNC240", "ASYNC230"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests", "scripts"]
+
+[[tool.mypy.overrides]]
+module = ["ifaddr.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["aiphone_jo"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
