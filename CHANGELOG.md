@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-11
+
 ### Fixed
 
 - `discover()` waits for its receive socket to be closed before returning, so
