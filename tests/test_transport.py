@@ -14,7 +14,12 @@ from pathlib import Path
 import pytest
 
 from aiphone_jo import CloudAuthError, CloudConnectionError, CloudCredentials
-from aiphone_jo.transport import MqttConnectOptions, aiomqtt_connect, is_auth_failure
+from aiphone_jo.transport import (
+    AiomqttConnection,
+    MqttConnectOptions,
+    aiomqtt_connect,
+    is_auth_failure,
+)
 
 from .conftest import BROADCAST_TOPIC, CLIENT_ID, RECV_TOPIC, Pki, make_pki
 
@@ -243,3 +248,23 @@ async def test_unverified_broker_certificate_is_rejected(pki: Pki) -> None:
     async with broker(pki) as server:
         with pytest.raises(CloudConnectionError):
             await aiomqtt_connect(options(pki, server.port, trusted=False))
+
+
+async def test_lost_connection_message_has_no_duplicated_prefix() -> None:
+    import aiomqtt
+
+    class Messages:
+        def __aiter__(self) -> Messages:
+            return self
+
+        async def __anext__(self) -> object:
+            raise aiomqtt.MqttError("Disconnected during message iteration")
+
+    class Client:
+        messages = Messages()
+
+    connection = AiomqttConnection(Client(), {})
+    with pytest.raises(CloudConnectionError) as err:
+        await anext(connection.messages())
+    # The client logs "MQTT connection lost: <this message>".
+    assert str(err.value) == "Disconnected during message iteration"
