@@ -6,6 +6,13 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `discover()` waits for its receive socket to be closed before returning, so
+  that a new discovery started right away (for example `aiphone-jo pair --wait`
+  while the monitor is not yet in *add smartphone* mode) no longer fails with
+  "Address already in use" on UDP 51712.
+
 ## [0.4.1] - 2026-10-26
 
 ### Added
