@@ -95,6 +95,21 @@ async def test_invalid_replies_are_ignored() -> None:
         monitor.transport.close()
 
 
+async def test_consecutive_discoveries_reuse_the_receive_port() -> None:
+    # Regression: the receive socket must be closed when discover() returns,
+    # otherwise an immediate retry fails with "Address already in use".
+    receive_port = free_udp_port()
+    for _ in range(3):
+        with pytest.raises(NoMonitorFoundError):
+            await discover(
+                "127.0.0.1",
+                bind_address="127.0.0.1",
+                receive_port=receive_port,
+                send_port=free_udp_port(),
+                timeout=0.05,
+            )
+
+
 async def test_udp_failures_are_explicit() -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as occupied:
         occupied.bind(("127.0.0.1", 0))
