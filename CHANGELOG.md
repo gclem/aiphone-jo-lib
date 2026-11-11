@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-11
+
 ### Fixed
 
 - A lost MQTT connection is logged as `MQTT connection lost: <reason>`
