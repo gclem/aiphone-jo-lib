@@ -6,6 +6,13 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A monitoring session whose `MNT_REQ` is cancelled while waiting for the
+  station (for example a caller that gives up after a timeout) is now fully
+  closed (`LEAVE_USER_REQ` then `DISCNCT_REQ`). The station answered 486
+  (`StationBusyError`) to every new `MNT_REQ` for about a minute.
+
 ## [0.4.3] - 2026-11-11
 
 ### Fixed
