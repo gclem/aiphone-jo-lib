@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-14
+
 ### Fixed
 
 - A monitoring session whose `MNT_REQ` is cancelled while waiting for the
