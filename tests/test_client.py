@@ -206,6 +206,32 @@ async def test_busy_station_raises_and_releases_the_relay(
     await client.open_door(Output.UNLOCK, STATION)
 
 
+async def test_cancelled_monitor_request_closes_the_session(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    """A caller giving up while MNT_REQ is pending must not leave the station busy."""
+
+    def responder(message: dict[str, Any]) -> list[dict[str, Any]]:
+        if message["HEADER"]["MID"] == "23021":
+            return []  # Still waiting for the station.
+        return default_responder(message)
+
+    broker.responder = responder
+    task = asyncio.create_task(client.start_monitor(STATION))
+    for _ in range(50):
+        if "23021" in broker.connection.mids:
+            break
+        await asyncio.sleep(0.001)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert broker.connection.mids == ["30001", "23021", "30031", "23003"]
+    assert client.active_session is None
+    broker.responder = default_responder
+    session = await client.start_monitor(STATION)
+    await session.close()
+
+
 async def test_rejected_relay_start(
     client: AiphoneJoClient, broker: FakeBroker, replies: dict[str, Any]
 ) -> None:
