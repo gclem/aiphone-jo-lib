@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-11-15
+
 ### Fixed
 
 - The station's end of a monitoring session (`23003`) is now answered for
