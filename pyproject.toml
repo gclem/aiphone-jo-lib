@@ -63,7 +63,7 @@ path = "src/aiphone_jo/__init__.py"
 packages = ["src/aiphone_jo"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/aiphone_jo", "tests", "docs", "README.md", "CHANGELOG.md", "ROADMAP.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE"]
+include = ["src/aiphone_jo", "tests", "docs", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE"]
 
 [tool.ruff]
 line-length = 100
