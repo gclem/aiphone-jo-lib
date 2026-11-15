@@ -1,18 +1,30 @@
 # aiphone-jo
 
-Unofficial asyncio Python library for the **Aiphone JO-1MDW** video intercom:
-local pairing, cloud (AWS IoT MQTT) connection, door release, lock status, ring
-detection and video signaling (Janus WebRTC relay).
-
-It has **no dependency on Home Assistant** and is designed to be used by a
-Home Assistant integration.
-
 > [!WARNING]
-> **Unofficial project, not affiliated with or endorsed by Aiphone.** It
-> targets the **JO-1MDW only** (`HEADER.SYS 4`, `VER 1.2`): other Aiphone
-> models use different headers, regions, station identifiers and acceptance
-> rules, and are **not** supported. Door commands act on real hardware; use at
-> your own risk.
+> **Unofficial project, not affiliated with or endorsed by Aiphone.** Door
+> commands act on real hardware; use at your own risk.
+
+Asyncio Python library for the **Aiphone JO-1MDW** video intercom. It covers:
+
+- local pairing;
+- the cloud connection (AWS IoT MQTT);
+- the monitor's outputs (door release);
+- ring detection and call answering;
+- video signaling (Janus WebRTC relay).
+
+It has **no dependency on Home Assistant**. It holds the whole protocol of the
+[Home Assistant integration](https://github.com/gclem/hass-aiphone-jo), which
+ships a copy of it, and can be used on its own or through its command line
+tool.
+
+## Status
+
+- **Version 0.4**, approaching 1.0. Used every day through the Home Assistant
+  integration on real JO-1MDW installations.
+- **JO-1MDW only** (`HEADER.SYS 4`, `VER 1.2`). Other Aiphone models use
+  different headers, regions, station identifiers and acceptance rules, and
+  are not supported.
+- **Releases:** published as GitHub Releases, not on PyPI.
 
 ## Features
 
@@ -21,75 +33,48 @@ Home Assistant integration.
 | LAN discovery (UDP 51711/51712) | `discover()` | Supported |
 | Local pairing: pinned TLS, code, `/registClient`, terminal registration | `PairingFlow` | Supported |
 | Room info: terminals, camera stations (`/getRoomInfo`) | `get_room_info()` | Supported |
-| MQTT connection (mutual TLS), own topic + monitor-wide topic | `AiphoneJoClient.connect()` | Supported |
+| MQTT connection (mutual TLS), own topic and monitor-wide topic, automatic reconnection | `AiphoneJoClient.connect()` | Supported |
 | Lock status (26031 → 27031) | `get_lock_status()` | Supported |
 | Lock output 1, unlock (26021 → 27021) | `open_door(Output.UNLOCK, …)` | Supported |
 | Lock output 2, option output (26121 → 27121) | `open_door(Output.OPTION, …)` | Supported |
-| Monitoring session (30001 → 23021) and clean teardown (30031 + 23003) | `monitor()` | Supported |
+| Monitoring session (30001 → 23021) and clean teardown (30031 + 23003), also when cancelled | `monitor()` | Supported |
 | Station-side end of session (~60 s, 23003 → 30031 + 24003) | automatic | Supported |
-| Video/audio signaling (Janus offer 31011, answer 30012) | `MonitorSession.request_offer()` / `send_answer()`, `live_monitor()` | Supported |
-| Snapshots and live video (optional `media` extra, aiortc) | `snapshot()`, `video_stream()` | Experimental |
-| Doorbell detection (23001), cancel (23004), end reasons | `RingEvent`, `CallUpdatedEvent` | Experimental |
+| Video/audio signaling (Janus offer 31011, answer 30012), renewed sessions | `MonitorSession.request_offer()` / `send_answer()`, `live_monitor()` | Supported |
+| Doorbell detection (23001), cancel (23004), end reasons | `RingEvent`, `CallUpdatedEvent` | Supported |
+| Video of a ringing call without answering it | `answer_call()` + `CallSession.withdraw()` | Supported |
 | Answering a call (30011/30012, 24001, 30021, 24002 → 25001, 23008), declining (603) | `answer_call()` | Experimental |
+| Snapshots and live video with aiortc (optional `media` extra) | `snapshot()`, `video_stream()` | Experimental |
 | Unregistering a terminal (`/deleteClientInfo`) | `unregister()`, `PairingFlow.cancel()` | Experimental |
 | Lock (26032) | `messages.build_lock_request()` (builder only) | Untested |
 
-Both lock outputs and the session teardown (client side and station side) are
-verified on a JO-1MDW. Each output command sends a pulse on the corresponding
-output of the monitor; what it opens depends on how the installation is wired.
-
-## Known limitations
-
-- Doorbell detection and call answering are experimental and may not work on
-  every installation.
-- `unregister()` is experimental; the monitor's own smartphone list is managed
-  from the monitor.
-- The door commands (`unlock`, `out_option`) are only honoured **during an
-  active monitoring session**; outside a session the station silently ignores
-  them. `open_door()` therefore opens a short monitoring session, sends the
-  command and always closes the session (`LEAVE_USER_REQ` 30031 then
-  `DISCNCT_REQ` 23003).
-- The station closes a monitoring session by itself about **60 s** after
-  `monitor_req`; the client answers automatically, otherwise the next
-  `monitor_req` gets `RSLT 486`. Live video therefore stops after about 60 s.
-- A site can have several camera stations; one may answer `486` (busy) while
-  another answers `200`. The library exposes all of them.
-- **A client certificate can only hold one MQTT connection at a time.** Never
-  run two clients with the same paired identity.
-- Video (`media` extra) is experimental. It depends on aiortc, which does
-  not pin `av` in this library; Home Assistant 2026.10 pins `av==19.0.0`, which
-  requires an aiortc release newer than 1.15.0 (aiortc 1.15.0 accepts
-  `av>=14,<18`).
-- Live video is renewed every ~60 s by the station; expect a short gap.
-
-See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the protocol reference and
-[ROADMAP.md](ROADMAP.md) for planned features.
+The monitoring sessions, both lock outputs, doorbell detection and the video
+of a ringing call are verified on real JO-1MDW installations. Each output
+command sends a pulse on the corresponding output of the monitor; what it
+opens depends on how the installation is wired.
 
 ## Installation
 
-Python 3.12 or later. The library is not published on PyPI; releases are
-published as GitHub Releases. For development or the CLI:
+Python 3.12 or later:
 
 ```bash
 pip install "aiphone-jo @ git+https://github.com/gclem/aiphone-jo-lib@vX.Y.Z"
+# with snapshots and live video through aiortc:
+pip install "aiphone-jo[media] @ git+https://github.com/gclem/aiphone-jo-lib@vX.Y.Z"
 ```
 
-## Usage
+## Quick start
 
-### Pairing (once)
-
-Put the monitor in *add smartphone* mode, then:
+Pair once, with the monitor in *add smartphone* mode:
 
 ```python
 import aiohttp
-from aiphone_jo import PairingError, PairingFlow, discover
+from aiphone_jo import PairingFlow, discover
 
 async with aiohttp.ClientSession() as session:
     monitor = (await discover())[0]
     async with PairingFlow(session) as flow:
         peer = await flow.connect(monitor)       # TLS handshake, nothing sent yet
-        print(peer.fingerprint)                  # show it to the user
-        flow.approve(peer.fingerprint)           # after the user confirmed it
+        flow.approve(peer.fingerprint)           # after the user checked it
         await flow.request_code()                # the monitor displays a code
         await flow.authenticate(input("Code: "))
         await flow.register_cloud()              # /registClient
@@ -98,252 +83,28 @@ async with aiohttp.ClientSession() as session:
 store(credentials.to_storage())  # contains a private key: store it securely
 ```
 
-Every pairing failure is a `PairingError` with fields meant for a user
-interface:
-
-| Field | Content |
-|---|---|
-| `stage` | `PairingStage`: `discovery`, `compatibility`, `tls`, `trust`, `code_request`, `authentication`, `cloud_registration`, `terminal_registration` |
-| `reason` | `PairingFailureReason`, a stable string (see below) |
-| `mid`, `rslt` | reply MID (`11001`, `11003`, `11005`...) or application error code (`70002`, `71001`), and the raw result code |
-| `hint` | short English explanation |
-| `retry_same_connection` | the same step can be called again without reconnecting |
-
-| `mid` | `rslt` | `reason` |
-|---|---|---|
-| `11001` | 1 / 2 / 3 | `retry` / `registration_in_progress` / `terminal_limit_reached` |
-| `11003` | 1 or 2 / 3 | `wrong_code` / `code_expired` |
-| `11005` | 1 / 2 / 3 / 4 | `retry` / `name_too_long` / `name_already_used` / `eula_not_accepted` |
-| `70002` | 1 | `incompatible_version` (unsupported monitor system type) |
-| `71001` | HTTP status | `/registClient` failure (451: `eula_not_accepted`) |
-
-Other reasons: `monitor_not_found`, `tls_failed`, `link_closed` (the monitor
-closed the connection, for example when the pairing window expired),
-`fingerprint_mismatch`, `timeout`, `cloud_http_error`, `cloud_network_error`,
-`cloud_invalid_response`, `unknown_result`, `invalid_state`. The tables are
-available as `PAIRING_RSLT_REASONS`, `PAIRING_HINTS` and `pairing_reason()`.
-
-The flow stays on the same connection after a wrong code (11003 RSLT 2) or a rejected name (11005 RSLT 2 or 3,
-`register_terminal(name, auto_rename=False)`); call the step again. Other
-failures close the connection: `await flow.reconnect()` reopens it with the
-already approved fingerprint (the monitor must still be in *add smartphone*
-mode). `await flow.cancel()` aborts and deletes a cloud registration that has
-no terminal yet. `discover()` reports monitors that refuse the request
-(11001) as `PairingRejectedError`, or returns them with `rslt` set when
-`include_refused=True`.
-
-`flow.monitor_id` (also `CloudCredentials.monitor_id`), available after
-`register_cloud()`, is a stable, non-secret identifier of the monitor that
-survives re-pairing, suitable as a unique id. It is a truncated hash, never the
-MAC address in clear.
-
-### Stored credentials
+Then connect to the cloud, follow the events and use the outputs:
 
 ```python
-from aiphone_jo import CloudCredentials, CredentialsExpiredError
+from aiphone_jo import AiphoneJoClient, CloudCredentials, Output
 
-data = credentials.to_storage()           # {"schema": 1, ..., "expires": "..."}
-credentials = CloudCredentials.from_storage(data)
-credentials.expires, credentials.is_expired()
-```
-
-`from_storage()` migrates older layouts (including 0.1.0 `as_dict()` data,
-now deprecated), ignores unknown keys, rejects data from a newer schema with
-`InvalidCredentialsError`, and raises `CredentialsExpiredError` for an expired
-client certificate. Client certificates are typically valid for about 50
-years; to renew one, pair again.
-
-`await unregister(session, credentials)` deletes the terminal from the Aiphone
-cloud (`/deleteClientInfo`). It is idempotent: it returns `False` when the
-terminal was already deleted. It is **experimental**. The monitor's own
-smartphone list is managed from the monitor.
-
-### Cloud client
-
-```python
-from aiphone_jo import AiphoneJoClient, CloudCredentials, Output, RingEvent
-
-credentials = CloudCredentials.from_storage(stored_dict)
-client = AiphoneJoClient(credentials, session=session)
-client.add_listener(lambda event: print(event))  # RingEvent, CallUpdatedEvent, ...
-await client.connect()                            # reconnects automatically
-
-status = await client.get_lock_status()
+client = AiphoneJoClient(CloudCredentials.from_storage(stored), session=session)
+client.add_listener(print)                          # RingEvent, CallUpdatedEvent, ...
+await client.connect()                              # reconnects automatically
 stations = (await client.get_room_info()).camera_terminals
-
-await client.open_door(Output.UNLOCK, stations[0])  # lock output 1 (or: 1)
-await client.open_door(Output.OPTION, stations[0])  # lock output 2 (or: 2)
-
-async with client.monitor(stations[0]) as live:   # real monitoring call
-    offer = await live.request_offer()            # Janus SDP offer
-    await live.send_answer(answer_from_your_webrtc_stack(offer))
-    await live.unlock()                           # reuses this session
-
+await client.open_door(Output.UNLOCK, stations[0])  # pulse on output 1
 await client.disconnect()
 ```
 
-If the cloud refuses the identity (revoked or deleted terminal: MQTT "not
-authorized", client certificate rejected, own topic refused, HTTP 401/403),
-`CloudAuthError` is raised (or, while connected, a `ConnectionStateEvent`
-with `auth_failed=True` is emitted) and automatic reconnection stops: pair
-again.
+## Documentation
 
-### Video (optional `media` extra)
-
-```bash
-pip install "aiphone-jo[media] @ git+https://github.com/gclem/aiphone-jo-lib@vX.Y.Z"
-```
-
-```python
-client = AiphoneJoClient(credentials, session=session, camera_terminal=station)
-
-jpeg = await client.snapshot()                    # one JPEG, session closed afterwards
-
-async with client.video_stream() as stream:       # live view, renewed every ~60 s
-    async for frame in stream.frames():           # av.VideoFrame objects
-        ...
-    jpeg = stream.latest_jpeg(quality=80)         # most recent frame, or None
-```
-
-- `snapshot(terminal=None, *, timeout=15.0)` opens a monitoring session,
-  negotiates WebRTC with aiortc, decodes the first video frame and always
-  closes the session. While a `video_stream()` is open it returns the stream's
-  latest frame instead.
-- `video_stream(terminal=None)` keeps the view alive: when the station ends the
-  session (after about 60 s) a new one is negotiated automatically, with a gap
-  of a few seconds. While it is open, `open_door()` reuses its session.
-- With `terminal=None`, the client uses `camera_terminal`, or else the first
-  camera station from `/getRoomInfo` that is not busy.
-- Errors: `MediaUnavailableError` (extra not installed), `MediaTimeoutError`,
-  `StationBusyError` (486).
-
-The core never imports aiortc. Another WebRTC stack (for example a bridge to a
-media server) can reuse the same session handling through the low-level
-`live_monitor()` API, which renews the session and calls an
-`async (offer_sdp) -> answer_sdp` callback for every new session:
-
-```python
-async def negotiate(offer_sdp: str) -> str:
-    ...  # apply the relay's offer, return a complete answer (no trickle ICE)
-
-async with client.live_monitor(negotiate, station, on_session_end=cleanup) as live:
-    await live.wait_stopped()
-```
-
-The relay is a Janus gateway (ICE-lite): it sends the offer (H264 video with
-`profile-level-id=42e01f`, `packetization-mode=1`; PCMU audio) and expects a
-complete, receive-only answer.
-
-The relay names its media sections `audio` and `video` and advertises the
-`sdes:mid` RTP header extension. Some WebRTC servers (for example go2rtc)
-expect numeric mids and answer `inactive` otherwise.
-`aiphone_jo.sdp.normalize_mids(offer)` returns the offer with numeric mids and
-without that extension, plus a `restore(answer)` function that puts the
-original mids back before the answer is sent to the relay:
-
-```python
-from aiphone_jo.sdp import normalize_mids
-
-async def negotiate(offer_sdp: str) -> str:
-    offer, restore = normalize_mids(offer_sdp)
-    answer = await other_webrtc_server.answer(offer)
-    return restore(answer)
-```
-
-An offer can also be reduced to a single media section, for a peer that only
-handles one of them; `restore(answer)` rebuilds the complete answer with the
-other sections rejected (port 0, `a=inactive`, removed from `BUNDLE`):
-
-```python
-from aiphone_jo.sdp import extract_section
-
-audio_offer, restore = extract_section(offer_sdp, "audio", direction="sendrecv")
-answer_sdp = restore(await audio_only_peer.answer(audio_offer))
-```
-
-`media_sections(sdp)` describes the sections (kind, port, mid, direction...).
-
-### Answering a call (experimental)
-
-`answer_call()` runs the whole pick-up of the ringing call and hangs up when
-the block exits:
-
-```python
-async def negotiate(offer_sdp: str) -> str:
-    ...  # same contract as live_monitor(): complete answer to the relay's offer
-
-async def talk(send_offer) -> None:            # optional: our microphone
-    offer = ...                                # SDP offer of our audio sender
-    answer = await send_offer(offer)           # ADD_SND_USER_REQ 30021 -> 31021
-    ...                                        # apply the relay's answer
-
-async with client.answer_call(call, negotiate, talk=talk) as session:
-    ...  # talking (CallStatus.TALKING)
-```
-
-Sequence: `30011` (relay offer) → `negotiate` → `30012` → `24001`; then, if
-`talk` is given, `talk(send_offer)` (`30021` → `31021`); then `24002` →
-`25001`, and `23008` (`RSLT 200`) → `24008`. Without `talk`, the `30021` step
-is skipped: the call is answered but no audio is sent to the station.
-
-- If another phone answered first (`25001` naming another client),
-  `CallAnsweredElsewhereError` is raised and only the relay is left (`30031`):
-  the call is not hung up for the other phone.
-- On any other failure or cancellation, the call is hung up (`30031` then
-  `23003`) if it was ours, otherwise the relay is left and the call keeps
-  ringing on the other phones. `CallEndedError.reason` tells why a call ended
-  during the sequence.
-- `await client.answer_call(call, negotiate)` returns the `CallSession`
-  without hanging up at the end (call `close()` yourself), and
-  `await client.answer_call()` returns it before any message is sent, for a
-  manual sequence.
-- `CallSession.withdraw()` leaves the relay (`30031` only) without answering
-  or declining: no `24001`, `24002`, `23008` nor `23003` is sent, the call
-  keeps ringing and can be answered later. For example, to grab a picture of
-  the visitor while the call rings:
-
-  ```python
-  session = await client.answer_call(call)
-  try:
-      offer = await session.request_offer()
-      await session.send_answer(await negotiate(offer))
-      ...  # receive one video frame
-  finally:
-      await session.withdraw()
-  ```
-
-When a call ends, `IncomingCall.end_reason` and `CallUpdatedEvent.reason` are
-set to a `CallEndReason`:
-
-| Reason | Cause |
+| Guide | Content |
 |---|---|
-| `answered_elsewhere` | another phone answered first (status `answered_elsewhere`) |
-| `ended_by_station` | the station hung up (`23003`) |
-| `cancelled_by_station` | the visitor or the station abandoned the call (`23004`) |
-| `expired` | nobody answered within `ring_timeout` (60 s by default) |
-| `rejected` | this client declined (`CallSession.reject()`) |
-| `ended_by_client` | this client hung up |
-
-The maximum ring and conversation durations enforced by the station are
-unknown.
-
-### Home Assistant usage
-
-- **Config flow**: `discover()` then `PairingFlow` (the TLS connection stays
-  open between steps), then the choice of the camera station from
-  `camera_terminals`; store `CloudCredentials.to_storage()` in the entry and
-  use `monitor_id` as the unique id. Map `PairingError.reason` to UI errors.
-- **Coordinator**: push-based, `add_listener()` + `connect()`;
-  `ConnectionStateEvent` drives availability. `CloudAuthError`,
-  `ConnectionStateEvent(auth_failed=True)` and `CredentialsExpiredError` map
-  to re-authentication.
-- **Entities**: ring event / binary sensor (`RingEvent`, `CallUpdatedEvent`
-  and its `reason`),
-  one button per lock output (`open_door`), lock status sensor, and a camera
-  using `snapshot()` for still images and `video_stream()` or
-  `live_monitor()` for live view.
-- Use `CloudCredentials.async_create_ssl_context()` (already done by
-  `connect()`) to avoid blocking the event loop.
+| [Pairing](docs/pairing.md) | Pairing flow, errors and their reasons, stored credentials, unregistering |
+| [Cloud client](docs/client.md) | Connection, outputs, monitoring sessions, errors, use in Home Assistant |
+| [Video](docs/video.md) | `media` extra, `live_monitor()` for another WebRTC stack, SDP helpers |
+| [Calls](docs/calls.md) | Rings, answering, picture of a ringing call, end reasons |
+| [Protocol](docs/PROTOCOL.md) | Reference of the JO-1MDW messages |
 
 ## Command line tool
 
@@ -363,27 +124,30 @@ aiphone-jo unregister                        # delete the terminal from the clou
 The identity file defaults to `~/.config/aiphone-jo/credentials.json`
 (`--credentials` to change it).
 
-## Errors
+## Known limitations
 
-All exceptions derive from `AiphoneJoError`:
-
-- `PairingError`, with `DiscoveryError` (`NoMonitorFoundError`),
-  `UntrustedPeerError`, `PairingRejectedError`, `IncompatibleVersionError`,
-  `PairingLinkClosedError`, `PairingTimeoutError` and `PairingCloudError`;
-- `CloudApiError` (`status`, `kind`: `http`, `network` or `invalid_response`);
-- `CloudConnectionError`, with `CloudAuthError` (identity refused);
-- `InvalidCredentialsError`, with `CredentialsExpiredError`;
-- `NotConnectedError`, `ResponseTimeoutError`, `CommandRejectedError`
-  (`StationBusyError` for `RSLT 486`) and `SessionError`, with
-  `CallEndedError` (`reason`) and `CallAnsweredElsewhereError`.
+- **Door commands** are only honoured during a monitoring session. So
+  `open_door()` opens a short one, sends the command and closes it.
+- **The station ends each monitoring session** about 60 s after it starts.
+  Live video therefore pauses briefly when the session is renewed.
+- **One session at a time**: a station answers `486` (`StationBusyError`)
+  while another session is open on it.
+- **One MQTT connection at a time** per client certificate: never run two
+  clients with the same paired identity.
+- **Experimental features:** call answering, the `media` extra and
+  `unregister()`. The monitor's own smartphone list is managed from the
+  monitor.
 
 ## Security and privacy
 
-Logs are redacted (secrets and identifiers), sensitive fields are excluded from
-`repr`, MQTT TLS is always verified, and the monitor's self-signed certificate
-is pinned by fingerprint. The CLI stores the paired identity in a file
-readable by its owner only (mode `0600`); protect it like a password. To report
-a vulnerability, see [SECURITY.md](SECURITY.md).
+- Logs are redacted (secrets and identifiers), and sensitive fields are
+  excluded from `repr`.
+- MQTT TLS is always verified, and the monitor's self-signed certificate is
+  pinned by fingerprint.
+- The CLI stores the paired identity in a file readable by its owner only
+  (mode `0600`); protect it like a password.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Development
 
@@ -396,7 +160,8 @@ uv run pytest --cov
 
 Tests never touch real hardware or the Aiphone cloud: they use loopback
 UDP/TLS servers, a minimal MQTT broker and fake transports. Fixtures only
-contain fictitious values. See [CONTRIBUTING.md](CONTRIBUTING.md).
+contain fictitious values. See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[changelog](CHANGELOG.md).
 
 ## License
 

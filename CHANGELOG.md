@@ -6,6 +6,12 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The README is shorter: what the library does, its status, features,
+  installation and a quick start. The details moved to guides in `docs/`
+  (pairing, cloud client, video, calls). The roadmap is removed.
+
 ## [0.4.4] - 2026-11-14
 
 ### Fixed
