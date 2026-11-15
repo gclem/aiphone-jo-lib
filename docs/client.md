@@ -42,7 +42,10 @@ every connection change.
   `RSLT 486`.
 - **A session cancelled while the station answers the request** (for example
   by a caller giving up after a timeout) is fully closed as well, so the
-  station does not stay busy.
+  station does not stay busy:
+  - if the station's reply arrives later, the session it started is closed;
+  - if the station ends such a session (`23003`), the client answers it.
+    Unanswered, the station refuses every new session (486).
 - **Several camera stations:** one may answer `486` (busy) while another
   answers `200`. The library exposes all of them.
 - **One MQTT connection at a time:** a client certificate can only hold one

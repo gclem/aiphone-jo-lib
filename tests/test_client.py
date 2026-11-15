@@ -232,6 +232,76 @@ async def test_cancelled_monitor_request_closes_the_session(
     await session.close()
 
 
+async def _abandon_monitor_request(client: AiphoneJoClient, broker: FakeBroker) -> str:
+    """Start a session, give up while MNT_REQ is pending; return its CID."""
+
+    def responder(message: dict[str, Any]) -> list[dict[str, Any]]:
+        if message["HEADER"]["MID"] == "23021":
+            return []  # Still waiting for the station.
+        return default_responder(message)
+
+    broker.responder = responder
+    task = asyncio.create_task(client.start_monitor(STATION))
+    for _ in range(50):
+        if "23021" in broker.connection.mids:
+            break
+        await asyncio.sleep(0.001)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    broker.responder = default_responder
+    return str(broker.connection.headers("23021")[0]["CID"])
+
+
+async def test_station_end_of_an_abandoned_session_is_answered(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    """The station started the session anyway and ends it: answer, or it stays busy."""
+    cid = await _abandon_monitor_request(client, broker)
+    connection = broker.connection
+    published = len(connection.published)
+    connection.inject({"HEADER": {"MID": "23003", "CID": cid, "REASON": 0}})
+    await settle(10)
+    assert connection.mids[published:] == ["30031", "24003"]
+    assert connection.headers("24003")[0]["CID"] == cid
+    # Answered once only.
+    connection.inject({"HEADER": {"MID": "23003", "CID": cid, "REASON": 0}})
+    await settle(10)
+    assert connection.mids[published:] == ["30031", "24003"]
+
+
+async def test_late_reply_closes_the_session_it_started(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    """A MNT_REQ reply arriving after the caller gave up closes that session."""
+    cid = await _abandon_monitor_request(client, broker)
+    connection = broker.connection
+    published = len(connection.published)
+    connection.inject({"HEADER": {"MID": "24021", "CID": cid, "CLIID": "relay-2", "RSLT": 200}})
+    await settle(10)
+    assert connection.mids[published:] == ["30031", "23003"]
+    assert connection.headers("30031")[-1]["PCLIID"] == "relay-2"
+    # A refused late reply started nothing: nothing to close.
+    cid = await _abandon_monitor_request(client, broker)
+    published = len(connection.published)
+    connection.inject({"HEADER": {"MID": "24021", "CID": cid, "RSLT": 486}})
+    await settle(10)
+    assert connection.mids[published:] == []
+
+
+async def test_other_clients_sessions_are_left_alone(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    """23003 and 24021 of sessions this client did not open are not answered."""
+    await _abandon_monitor_request(client, broker)
+    connection = broker.connection
+    published = len(connection.published)
+    connection.inject({"HEADER": {"MID": "23003", "CID": "other-client", "REASON": 0}})
+    connection.inject({"HEADER": {"MID": "24021", "CID": "other-client", "RSLT": 200}})
+    await settle(10)
+    assert connection.mids[published:] == []
+
+
 async def test_rejected_relay_start(
     client: AiphoneJoClient, broker: FakeBroker, replies: dict[str, Any]
 ) -> None:
