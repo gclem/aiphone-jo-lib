@@ -6,6 +6,17 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The station's end of a monitoring session (`23003`) is now answered for
+  every session this client opened, including one that already ended
+  locally or whose `MNT_REQ` was given up (timeout, cancellation) but that
+  the station started anyway. Unanswered, the station refused every new
+  session with 486 (`StationBusyError`), for much longer than a minute.
+- A `MNT_REQ` reply (`24021` `RSLT 200`) arriving after the caller gave up
+  now closes the session it started (`LEAVE_USER_REQ` then `DISCNCT_REQ`).
+- Sessions of other clients are still left alone.
+
 ### Changed
 
 - The README is shorter: what the library does, its status, features,

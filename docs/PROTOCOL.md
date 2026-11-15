@@ -84,7 +84,10 @@ send topic. Requests carry `CLIID`, `RCVTPC` (receive topic), `VER` `"1.2"`,
 
 About 60 s after `23021`, the station sends `23003` on the session `CID`; the
 terminal answers `30031` then `24003` (`RSLT 200`). Without this answer the
-next `23021` gets `486`.
+next `23021` gets `486`, from every client, for much longer than a minute
+(observed for over 20 minutes), while the indoor monitor itself still works.
+This includes a session whose `MNT_REQ` reply never reached the terminal: the
+station may have started it anyway.
 
 The relay is a Janus gateway: its offer is ICE-lite with PCMU audio and H264
 video. All relay requests reuse the session `CID`; `PCLIID` is the `CLIID` of
