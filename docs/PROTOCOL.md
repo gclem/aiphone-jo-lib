@@ -66,9 +66,15 @@ send topic. Requests carry `CLIID`, `RCVTPC` (receive topic), `VER` `"1.2"`,
 | Request | Reply | Notes |
 |---|---|---|
 | `26031` get lock status (no `BODY`) | `27031` `{ENTNR, KEYINF[{KEYTP, KEYSTS}]}` | works at any time |
-| `26021` unlock, output 1 (`AVID 0`, empty `BODY`) | `27021` `{REASON}` | only during a monitoring session |
+| `26021` unlock, output 1 (`AVID 0`, empty `BODY`) | `27021` `{REASON}` | only during a monitoring session (`RSLT 0`); outside one, `RSLT 1` and nothing happens |
 | `26121` option output, output 2 | `27121` | only during a monitoring session |
 | `26032` lock | `27032` | untested |
+
+The output commands carry no session `CID`: the message is the same inside
+and outside a monitoring session. Checked on a JO-1MDW: sent while no session
+was open, `26021` gets `27021` `RSLT 1` (`REASON 0`) within about a second and
+the output does not operate; the same command during a session gets `RSLT 0`
+and operates it.
 
 ### Monitoring and door release
 
