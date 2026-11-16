@@ -6,6 +6,17 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `MNT_REQ` now waits up to 30 s for the station's answer
+  (`monitor_reply_timeout`), instead of the usual 13 s. A busy monitor may
+  answer late, and a request given up too early may still start a session
+  that nobody closes, which keeps the station busy (486).
+- When the station answers 486, the sessions this client gave up earlier
+  (timeout, cancellation) are closed again (`LEAVE_USER_REQ`, `DISCNCT_REQ`),
+  once each: one of them may be what keeps it busy. Only the sessions known
+  since the client started are concerned.
+
 ## [0.4.5] - 2026-11-15
 
 ### Fixed

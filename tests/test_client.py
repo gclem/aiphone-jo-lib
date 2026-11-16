@@ -289,6 +289,58 @@ async def test_late_reply_closes_the_session_it_started(
     assert connection.mids[published:] == []
 
 
+async def test_monitor_request_waits_longer_than_other_requests(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    """MNT_REQ is not given up after the usual reply delay (0.5 s here)."""
+
+    def responder(message: dict[str, Any]) -> list[dict[str, Any]]:
+        if message["HEADER"]["MID"] == "23021":
+            return []  # The station answers late.
+        return default_responder(message)
+
+    broker.responder = responder
+    task = asyncio.create_task(client.start_monitor(STATION))
+    await asyncio.sleep(0.8)
+    assert not task.done()
+    cid = broker.connection.headers("23021")[0]["CID"]
+    broker.connection.inject(
+        {"HEADER": {"MID": "24021", "CID": cid, "CLIID": "station-1", "RSLT": 200}}
+    )
+    session = await task
+    assert session.active
+    assert "23003" not in broker.connection.mids
+    broker.responder = default_responder
+    await session.close()
+
+
+async def test_busy_station_closes_given_up_sessions(
+    client: AiphoneJoClient, broker: FakeBroker
+) -> None:
+    """When the station answers busy, sessions given up earlier are closed again."""
+    cid = await _abandon_monitor_request(client, broker)
+    connection = broker.connection
+
+    def busy(message: dict[str, Any]) -> list[dict[str, Any]]:
+        if message["HEADER"]["MID"] == "23021":
+            return [reply_to(message, "24021", rslt=486)]
+        return default_responder(message)
+
+    broker.responder = busy
+    with pytest.raises(StationBusyError):
+        await client.start_monitor(STATION)
+    await settle(10)
+    closes = [h for h in connection.headers("23003") if h["CID"] == cid]
+    leaves = [h for h in connection.headers("30031") if h["CID"] == cid]
+    # Once at the cancellation, once more after the busy answer.
+    assert (len(leaves), len(closes)) == (2, 2)
+    # Not again at the next busy answer.
+    with pytest.raises(StationBusyError):
+        await client.start_monitor(STATION)
+    await settle(10)
+    assert len([h for h in connection.headers("23003") if h["CID"] == cid]) == 2
+
+
 async def test_other_clients_sessions_are_left_alone(
     client: AiphoneJoClient, broker: FakeBroker
 ) -> None:

@@ -101,6 +101,16 @@ next `23021` gets `486`, from every client, for much longer than a minute
 This includes a session whose `MNT_REQ` reply never reached the terminal: the
 station may have started it anyway.
 
+Observed on a JO-1MDW after many sessions in a row: `480` first, then
+`MNT_REQ` without any reply, then `486` to every client, including a newly
+paired one, while the indoor monitor itself still showed the camera. A
+`DISCNCT_REQ` sent right after giving up an `MNT_REQ` may get `481` (no such
+session) if the station starts the session only afterwards. The result codes
+match SIP's (200, 480, 481, 486, 603): the monitor handles a monitoring
+session like a call. The block lasted from over an hour to several hours,
+with no `23003` from the station, then cleared by itself. Restarting the
+monitor has not been tried.
+
 The relay is a Janus gateway: its offer is ICE-lite with PCMU audio and H264
 video. All relay requests reuse the session `CID`; `PCLIID` is the `CLIID` of
 the last successful reply.
