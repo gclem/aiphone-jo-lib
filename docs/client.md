@@ -57,6 +57,34 @@ every connection change.
 - **One MQTT connection at a time:** a client certificate can only hold one
   MQTT connection. Never run two clients with the same paired identity.
 
+## Session history
+
+The client keeps a history of the monitoring sessions it opened, with their
+status: `starting`, `active`, `refused`, `abandoned` (given up before the
+station answered, or lost with the connection: the station may still hold
+it), `closed`, `ended` (by the station) or `cleaned` (closed again later).
+
+- **Events:** each status change emits a `SessionRecordEvent` with a copy of
+  the `SessionRecord`.
+- **After a restart:** store the records (`to_storage()`, private: the `CID`
+  contains the client id) and give them back with
+  `client.restore_sessions(records)` before `connect()`. A session that was
+  starting or active when the client stopped becomes `abandoned`.
+- **Unfinished sessions** are closed again (`LEAVE_USER_REQ`, `DISCNCT_REQ`)
+  once each: after each connection, and when the station answers busy. If
+  the station answers nothing, the session stays unfinished and is tried
+  again after the next restart.
+- **Bounded:** the last 20 ordinary sessions (`closed`, `ended`); the others
+  up to 15 days and at most 50, unfinished ones kept last.
+- `client.session_history` returns the records; `record.tag` is the time part
+  of the `CID`, without the client id, safe to show in logs.
+
+```python
+client.add_listener(lambda e: isinstance(e, SessionRecordEvent) and save(e.record))
+client.restore_sessions(SessionRecord.from_storage(d) for d in load())
+await client.connect()
+```
+
 ## Identity refused
 
 If the cloud refuses the identity, automatic reconnection stops: pair again.

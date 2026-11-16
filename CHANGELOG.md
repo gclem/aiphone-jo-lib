@@ -6,6 +6,20 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- History of the monitoring sessions opened by the client, with their
+  status (`SessionRecord`, `SessionStatus`): starting, active, refused,
+  abandoned, closed, ended by the station, cleaned. Each change emits a
+  `SessionRecordEvent`; `session_history` returns them.
+- `restore_sessions()` gives back the records stored before a restart.
+  Unfinished sessions (abandoned, or starting or active when the client
+  stopped) are closed again once each after each connection, and when the
+  station answers busy, so that a session left open on the station no
+  longer keeps it busy after a restart.
+- The history is bounded: the last 20 ordinary sessions, the others up to 15
+  days and at most 50.
+
 ## [0.4.6] - 2026-11-16
 
 ### Fixed
