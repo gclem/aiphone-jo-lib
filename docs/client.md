@@ -46,7 +46,12 @@ every connection change.
   station does not stay busy:
   - if the station's reply arrives later, the session it started is closed;
   - if the station ends such a session (`23003`), the client answers it.
-    Unanswered, the station refuses every new session (486).
+    Unanswered, the station refuses every new session (486);
+  - if the station answers busy (486) later, such sessions are closed again,
+    once each.
+- **The station's answer to a monitoring request** is awaited up to 30 s
+  (`monitor_reply_timeout`), longer than other requests: giving up early
+  is what can leave a session open on the station.
 - **Several camera stations:** one may answer `486` (busy) while another
   answers `200`. The library exposes all of them.
 - **One MQTT connection at a time:** a client certificate can only hold one
