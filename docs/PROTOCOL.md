@@ -66,21 +66,19 @@ send topic. Requests carry `CLIID`, `RCVTPC` (receive topic), `VER` `"1.2"`,
 | Request | Reply | Notes |
 |---|---|---|
 | `26031` get lock status (no `BODY`) | `27031` `{ENTNR, KEYINF[{KEYTP, KEYSTS}]}` | works at any time |
-| `26021` unlock, output 1 (`AVID 0`, empty `BODY`) | `27021` `{REASON}` | during a monitoring session (`RSLT 0`); outside one, see below |
+| `26021` unlock, output 1 (`AVID 0`, empty `BODY`) | `27021` `{REASON}` | only during a monitoring session (`RSLT 0`); outside one, ignored |
 | `26121` option output, output 2 | `27121` | only during a monitoring session |
 | `26032` lock | `27032` | untested |
 
 The output commands carry no session `CID`: the message is the same inside
-and outside a monitoring session. During a session, `26021` gets `RSLT 0` and
-operates the output. Outside a session, it is not settled yet:
+and outside a monitoring session, but a session is required. Checked on a
+JO-1MDW:
 
-- the initial captures noted that the monitor ignores it;
-- on a JO-1MDW whose stations were refusing every `MNT_REQ` (486) at the
-  time, `26021` sent without a session got `27021` `RSLT 1` (`REASON 0`)
-  within about a second, and the output did not operate. The refusal may
-  come from that blocked state rather than from the missing session.
-
-It needs to be checked again while the stations accept sessions.
+- during a session, `26021` gets `RSLT 0` and operates the output;
+- outside a session, with the stations accepting sessions, `26021` got no
+  reply within 8 seconds and the output did not operate (twice);
+- outside a session while the stations were refusing every `MNT_REQ` (486),
+  `26021` got `27021` `RSLT 1` (`REASON 0`) and the output did not operate.
 
 ### Monitoring and door release
 

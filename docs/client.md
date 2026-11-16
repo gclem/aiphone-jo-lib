@@ -32,10 +32,9 @@ every connection change.
 
 ## Monitoring sessions
 
-- **Door commands** (`unlock`, `out_option`) are sent **during an active
-  monitoring session**, where they are known to work. Whether the monitor
-  honours them outside a session is not settled (see the protocol
-  reference). So `open_door()` opens a short monitoring session, sends the
+- **Door commands** (`unlock`, `out_option`) are only honoured **during an
+  active monitoring session**: outside one, the monitor ignores them (no
+  reply, nothing operates; checked on a JO-1MDW). So `open_door()` opens a short monitoring session, sends the
   command and always closes the session (`LEAVE_USER_REQ` 30031 then
   `DISCNCT_REQ` 23003).
 - **The station ends a session** by itself about **60 s** after `monitor_req`.
