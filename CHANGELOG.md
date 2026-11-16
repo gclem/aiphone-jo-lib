@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-16
+
 ### Fixed
 
 - `MNT_REQ` now waits up to 30 s for the station's answer
