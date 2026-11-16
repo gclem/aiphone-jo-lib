@@ -6,6 +6,8 @@ All notable changes to `aiphone-jo` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-11-16
+
 ### Added
 
 - History of the monitoring sessions opened by the client, with their
