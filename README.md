@@ -41,6 +41,7 @@ tool.
 | Station-side end of session (~60 s, 23003 → 30031 + 24003) | automatic | Supported |
 | Video/audio signaling (Janus offer 31011, answer 30012), renewed sessions | `MonitorSession.request_offer()` / `send_answer()`, `live_monitor()` | Supported |
 | Doorbell detection (23001), cancel (23004), end reasons | `RingEvent`, `CallUpdatedEvent` | Supported |
+| History of monitoring sessions, closing those left open (also after a restart) | `session_history`, `restore_sessions()`, `SessionRecordEvent` | Supported |
 | Video of a ringing call without answering it | `answer_call()` + `CallSession.withdraw()` | Supported |
 | Answering a call (30011/30012, 24001, 30021, 24002 → 25001, 23008), declining (603) | `answer_call()` | Experimental |
 | Snapshots and live video with aiortc (optional `media` extra) | `snapshot()`, `video_stream()` | Experimental |
